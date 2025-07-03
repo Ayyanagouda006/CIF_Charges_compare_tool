@@ -8,12 +8,12 @@ import re
 # 0.  Page setup (MUST be first Streamlit call)
 # ─────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="CIF Charges Entry",
+    page_title="LCL Destination Charges Comparison Calculator",
     page_icon="📦",
     layout="wide",
 )
 
-st.title("CIF Charges Entry UI")
+st.title("LCL Destination Charges Comparison Calculator")
 
 # ─────────────────────────────────────────────────────────────
 # 1.  Load exchange rates & currency list
