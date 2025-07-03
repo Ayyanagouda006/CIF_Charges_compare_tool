@@ -140,10 +140,15 @@ def agent_form(agent_id: int):
     st.selectbox("Rebate Currency", currency_options,
                  key=f"{agent_id}_rebate_currency",
                  index=currency_options.index("USD") if "USD" in currency_options else 0)
+    rebate_cols = st.columns(3)
+    rebate_headers = ["Per CBM", "Per Ton", "Per BL"]
+    for col, header in zip(rebate_cols, rebate_headers):
+        col.markdown(f"**{header}**")
+
     r1, r2, r3 = st.columns(3)
     r1.text_input("", key=f"{agent_id}_rebate_cbm", label_visibility="collapsed")
     r2.text_input("", key=f"{agent_id}_rebate_ton", label_visibility="collapsed")
-    r3.text_input("", key=f"{agent_id}_rebate_bl",  label_visibility="collapsed")
+    r3.text_input("", key=f"{agent_id}_rebate_bl", label_visibility="collapsed")
 
 # render each agent tab
 tabs = st.tabs([f"Agent {aid}" for aid in st.session_state.agent_ids])
@@ -265,11 +270,21 @@ def build_excel_file() -> bytes:
 b2_disabled = not all(k in st.session_state for k in
                       ("last_input_df", "last_result_df", "container_info"))
 
-b2.download_button(
-    "📥 Download Excel",
-    data=build_excel_file() if not b2_disabled else None,
-    file_name="cif_charge_report.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    disabled=b2_disabled,
-    help="Run Calculate first to enable"
-)
+if not b2_disabled:
+    excel_bytes = build_excel_file()
+    b2.download_button(
+        "📥 Download Excel",
+        data=excel_bytes,
+        file_name="cif_charge_report.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+else:
+    b2.download_button(
+        "📥 Download Excel",
+        data=None,
+        file_name="cif_charge_report.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        disabled=True,
+        help="Run Calculate first to enable"
+    )
+
