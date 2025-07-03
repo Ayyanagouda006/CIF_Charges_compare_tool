@@ -136,8 +136,8 @@ def agent_form(agent_id: int):
     st.text_input("Charge Head 9 Notes", key=f"{agent_id}_desc_9",
                   placeholder="If Cartons, …")
 
-    st.markdown("**Rebates**")
-    st.selectbox("Rebate Currency", currency_options,
+    st.markdown("***Rebates***")
+    st.selectbox("**Rebate Currency**", currency_options,
                  key=f"{agent_id}_rebate_currency",
                  index=currency_options.index("USD") if "USD" in currency_options else 0)
     rebate_cols = st.columns(3)
