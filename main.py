@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from io import BytesIO
-
+import re
 # ─────────────────────────────────────────────────────────────
 # 0.  Page setup (MUST be first Streamlit call)
 # ─────────────────────────────────────────────────────────────
@@ -213,18 +213,11 @@ def agent_compare(df, exchange_df, loadability, box_rate, origin_charge):
 
     return pd.DataFrame(rows_out)
 
-# ─────────────────────────────────────────────────────────────
-# 7.  Buttons & results
-# ─────────────────────────────────────────────────────────────
-# ─────────────────────────────────────────────────────────────
-# 7.  Buttons & results
-# ─────────────────────────────────────────────────────────────
 st.markdown("### 🛠️ Actions")
-b1, b2 = st.columns(2)
+calc_btn, dl_placeholder = st.columns(2)
 
-# ---------- 7‑A  CALCULATE ----------
-if b1.button("🧮 Calculate"):
-    # convert numeric inputs safely
+# 7‑A Calculate
+if calc_btn.button("🧮 Calculate"):
     try:
         load_f   = float(loadability)
         box_f    = float(box_rate)
@@ -233,58 +226,43 @@ if b1.button("🧮 Calculate"):
         st.error("Loadability, Box Rate, and Origin Charges must be numeric.")
         st.stop()
 
-    input_df   = extract_agent_data()
-    result_df  = agent_compare(input_df, exchange_df,
-                               load_f, box_f, origin_f)
-    # Keep for download
-    st.session_state["last_input_df"]  = input_df
-    st.session_state["last_result_df"] = result_df
+    in_df  = extract_agent_data()
+    out_df = agent_compare(in_df, exchange_df, load_f, box_f, origin_f)
+
     st.session_state["container_info"] = pd.DataFrame({
-        "Field": ["Container Type", "Loadability", "Box Rate (USD)", "Origin Charges (INR)"],
+        "Field": ["Container Type", "Loadability", "Box Rate (USD)", "Origin Charges (INR)"],
         "Value": [container_type, load_f, box_f, origin_f]
     })
+    st.session_state["last_input_df"]  = in_df
+    st.session_state["last_result_df"] = out_df
 
     st.success("Calculation complete.")
-    st.dataframe(result_df)
+    st.dataframe(out_df)
 
-# ---------- 7‑B  DOWNLOAD ----------
-def build_excel_file() -> bytes:
-    """Return a bytes object with all sheets written."""
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-        # 1) Container info
-        st.session_state["container_info"].to_excel(writer, sheet_name="Info", index=False)
+# 7‑B Download (only if data exists)
+def to_safe_sheet(name: str) -> str:
+    # Trim to 31 chars, remove forbidden chars
+    name = re.sub(r"[\[\]\*:/\\?]", "", name)[:31]
+    return name or "Sheet"
 
-        # 2) One sheet per agent
-        for agent, grp in st.session_state["last_input_df"].groupby("Agent Name", sort=False):
-            # Excel sheet names can’t exceed 31 chars ➔ truncate if needed
-            safe_name = agent[:31]
-            grp.to_excel(writer, sheet_name=safe_name, index=False)
+if all(k in st.session_state for k in ("container_info", "last_input_df", "last_result_df")):
+    with dl_placeholder:
+        buf = BytesIO()
+        with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
+            st.session_state["container_info"].to_excel(writer, sheet_name="Info", index=False)
 
-        # 3) Comparison sheet
-        st.session_state["last_result_df"].to_excel(writer, sheet_name="Comparison", index=False)
+            for agent, grp in st.session_state["last_input_df"].groupby("Agent Name", sort=False):
+                grp.to_excel(writer, sheet_name=to_safe_sheet(agent), index=False)
 
-    buffer.seek(0)
-    return buffer.getvalue()
+            st.session_state["last_result_df"].to_excel(writer, sheet_name="Comparison", index=False)
 
-b2_disabled = not all(k in st.session_state for k in
-                      ("last_input_df", "last_result_df", "container_info"))
-
-if not b2_disabled:
-    excel_bytes = build_excel_file()
-    b2.download_button(
-        "📥 Download Excel",
-        data=excel_bytes,
-        file_name="cif_charge_report.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        buf.seek(0)
+        st.download_button(
+            "📥 Download Excel",
+            data=buf.getvalue(),
+            file_name="cif_charge_report.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 else:
-    b2.download_button(
-        "📥 Download Excel",
-        data=None,
-        file_name="cif_charge_report.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        disabled=True,
-        help="Run Calculate first to enable"
-    )
-
+    with dl_placeholder:
+        st.caption("Run **Calculate** first to enable download.")
