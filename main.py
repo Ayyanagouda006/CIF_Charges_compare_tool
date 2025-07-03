@@ -105,14 +105,14 @@ def extract_agent_data() -> pd.DataFrame:
 def agent_form(agent_id: int):
     c1, c2 = st.columns([5, 1])
     with c1:
-        st.text_input("Agent Name", key=f"agent_name_{agent_id}",
+        st.text_input("***Agent Name***", key=f"agent_name_{agent_id}",
                       value=st.session_state.agent_names[agent_id])
     with c2:
         if st.button("❌", key=f"del_{agent_id}"):
             delete_agent(agent_id)
             st.rerun()
 
-    st.markdown("**Destination Charges (CIF)**")
+    st.markdown("***Destination Charges (CIF)***")
     head_cols = st.columns([3, 1, 1, 1, 1, 1, 1])
     for col, h in zip(head_cols,
                       ["Charge Head", "Currency", "Per CBM", "Per Ton",
