@@ -56,15 +56,56 @@ with main_tabs[0]:
     # ------------------------------------------------------------------
     # 2.  Container‑level inputs
     # ------------------------------------------------------------------
-    with st.expander("📦 Container Information", expanded=True):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            container_type = st.selectbox("Container Type", ["20 Standard", "40 Standard"])
-            loadability    = st.text_input("Loadability (numeric)", "0")
-        with c2:
-            box_rate       = st.text_input("Box Rate (USD)", "0")
-        with c3:
-            origin_charges = st.text_input("Origin Charges (INR)", "0")
+    with st.expander("***📦 20' STD Information***", expanded=True):
+        c1, c2, c3, c4, c5 = st.columns(5)
+        box_rate_20    = c1.text_input("**Box Rate (USD)**", "0", key="box_rate_20")
+        loadability_20 = c2.text_input("**Loadability (numeric)**", "0", key="load_20")
+        num_bl_20      = c3.text_input("**Number of BLs (numeric)**", "0", key="num_bl_20")
+        market_rate_20 = c4.text_input("**Market Rate (USD)**", "0", key="mkt_rate_20")
+        
+        # Freight cost display (in new column next to box rate & loadability)
+        try:
+            box_20 = float(box_rate_20)
+            load_20 = float(loadability_20)
+            if load_20 > 0:
+                freight_cost_20 = box_20 / load_20
+                c5.metric("📉 Freight Cost Per CBM", f"${freight_cost_20:.2f}")
+            else:
+                c5.write("Enter loadability > 0")
+        except ValueError:
+            c5.write("Waiting for valid numbers")
+
+        # Transhipment
+        st.markdown("**Transhipment**")
+        t1, t2, t3, t4, t5 = st.columns(5)
+        tran_cbm_20    = t1.text_input("**CBM (numeric)**", "0", key="tran_cbm_20")
+        tran_num_bl_20 = t2.text_input("**# of BLs (numeric)**", "0", key="tran_num_bl_20")
+        tran_pro_per_cbm_20 = t3.text_input("**Profitability Per CBM**", "0", key="tran_pro_per_cbm_20")
+
+
+    with st.expander("***📦 40' STD Information***", expanded=True):
+        c1, c2, c3, c4, c5 = st.columns(5)
+        box_rate_40       = c1.text_input("**Box Rate (USD)**", "0", key="box_rate_40")
+        loadability_40    = c2.text_input("**Loadability (numeric)**", "0", key="load_40")
+        num_bl_40         = c3.text_input("**Number of BLs (numeric)**", "0", key="num_bl_40")
+        market_rate_40    = c4.text_input("**Market Rate (USD)**", "0", key="mkt_rate_40")
+        # Freight cost display (in new column next to box rate & loadability)
+        try:
+            box_40 = float(box_rate_40)
+            load_40 = float(loadability_40)
+            if load_40 > 0:
+                freight_cost_40 = box_40 / load_40
+                c5.metric("📉 Freight Cost Per CBM", f"${freight_cost_40:.2f}")
+            else:
+                c5.write("Enter loadability > 0")
+        except ValueError:
+            c5.write("Waiting for valid numbers")
+
+        st.markdown("**Transhipment**")
+        t1,t2,t3,t4,t5 = st.columns(5)
+        tran_cbm_40    = t1.text_input("**CBM (numeric)**", "0", key="tran_cbm_40")
+        tran_num_bl_40 = t2.text_input("**# of BLs (numeric)**", "0", key="tran_num_bl_40")
+        tran_pro_per_cbm_40 = t3.text_input("**Profitability Per CBM**", "0", key="tran_pro_per_cbm_40")
 
     # ------------------------------------------------------------------
     # 3.  Session‑state setup for dynamic agents
@@ -87,9 +128,14 @@ with main_tabs[0]:
     # ------------------------------------------------------------------
     def extract_agent_data() -> pd.DataFrame:
         rows = []
+        nom_rows = []
         for agent_id in st.session_state.agent_ids:
             agent_name = st.session_state.get(f"agent_name_{agent_id}", f"Agent {agent_id}")
-
+            nomination_rate = st.session_state.get(f"nom_support_rate_{agent_id}", 0)
+            nomination_cbm = st.session_state.get(f"nom_support_cbm_{agent_id}", 0)
+            nomination_bl = st.session_state.get(f"nom_support_bl_{agent_id}", 0)
+            nom_rows.append({"Agent Name":agent_name,"Nomination Rate":nomination_rate,"Nomination CBM":nomination_cbm, "Nomination BL":nomination_bl})
+            
             # destination charges rows 1‑8
             for i in range(1, 9):
                 rows.append({
@@ -100,7 +146,8 @@ with main_tabs[0]:
                     "Per Ton":     st.session_state.get(f"{agent_id}_ton_{i}", ""),
                     "Minimum":     st.session_state.get(f"{agent_id}_min_{i}", ""),
                     "Maximum":     st.session_state.get(f"{agent_id}_max_{i}", ""),
-                    "Per BL":      st.session_state.get(f"{agent_id}_bl_{i}", "")
+                    "Per BL":      st.session_state.get(f"{agent_id}_bl_{i}", ""),
+                    "Per Container":""
                 })
 
             # remarks row
@@ -108,7 +155,7 @@ with main_tabs[0]:
                 "Agent Name": agent_name,
                 "Description": "Remarks",
                 "Currency":    st.session_state.get(f"{agent_id}_desc_9", ""),
-                "Per CBM": "", "Per Ton": "", "Minimum": "", "Maximum": "", "Per BL": ""
+                "Per CBM": "", "Per Ton": "", "Minimum": "", "Maximum": "", "Per BL": "", "Per Container":""
             })
 
             # rebate row
@@ -119,12 +166,15 @@ with main_tabs[0]:
                 "Per CBM":   st.session_state.get(f"{agent_id}_rebate_cbm", ""),
                 "Per Ton":   st.session_state.get(f"{agent_id}_rebate_ton", ""),
                 "Minimum": "", "Maximum": "",
-                "Per BL":    st.session_state.get(f"{agent_id}_rebate_bl", "")
+                "Per BL":    st.session_state.get(f"{agent_id}_rebate_bl", ""),
+                "Per Container": st.session_state.get(f"{agent_id}_rebate_container")
             })
 
         df = pd.DataFrame(rows)
+        agent_df = df[df["Description"].fillna("").str.strip() != ""]
+        nomination_df = pd.DataFrame(nom_rows)
         # keep only non‑empty descriptions
-        return df[df["Description"].fillna("").str.strip() != ""]
+        return agent_df,nomination_df
 
     # ------------------------------------------------------------------
     # 5.  Agent‑entry form UI
@@ -138,6 +188,31 @@ with main_tabs[0]:
             if st.button("❌", key=f"del_{agent_id}"):
                 delete_agent(agent_id)
                 st.rerun()
+
+        n1,n2,n3,n4,n5 = st.columns(5)
+        n1.number_input(
+            "**Nomination Rate(USD)**",
+            min_value=0.0,
+            step=0.1,
+            key=f"nom_support_rate_{agent_id}",
+            value=float(st.session_state.get(f"nom_support_rate_{agent_id}", 0.0))
+        )
+        n2.number_input(
+            "**Nomination CBM**",
+            min_value=0.0,
+            step=0.1,
+            key=f"nom_support_cbm_{agent_id}",
+            value=float(st.session_state.get(f"nom_support_cbm_{agent_id}", 0.0))
+        )
+
+        n3.number_input(
+            "**Nomination BL**",
+            min_value=0,
+            step=1,
+            key=f"nom_support_bl_{agent_id}",
+            value=int(st.session_state.get(f"nom_support_bl_{agent_id}", 0))
+        )
+
 
         st.markdown("***Destination Charges (CIF)***")
         head_cols = st.columns([3, 1, 1, 1, 1, 1, 1])
@@ -165,12 +240,12 @@ with main_tabs[0]:
 
         st.markdown("***Rebates***")
 
-        rebate_cols = st.columns(4)
-        rebate_headers = ["Currency", "Per CBM", "Per Ton", "Per BL"]
+        rebate_cols = st.columns(5)
+        rebate_headers = ["Currency", "Per CBM", "Per Ton", "Per BL","Per Container"]
         for col, header in zip(rebate_cols, rebate_headers):
             col.markdown(f"**{header}**")
 
-        r1, r2, r3, r4 = st.columns(4)
+        r1, r2, r3, r4, r5 = st.columns(5)
         r1.selectbox("", currency_options,
                      key=f"{agent_id}_rebate_currency",
                      label_visibility="collapsed",
@@ -178,6 +253,7 @@ with main_tabs[0]:
         r2.text_input("", key=f"{agent_id}_rebate_cbm", label_visibility="collapsed")
         r3.text_input("", key=f"{agent_id}_rebate_ton", label_visibility="collapsed")
         r4.text_input("", key=f"{agent_id}_rebate_bl", label_visibility="collapsed")
+        r5.text_input("", key=f"{agent_id}_rebate_container", label_visibility="collapsed")
 
     # render each agent tab
     tabs = st.tabs([f"Agent {aid}" for aid in st.session_state.agent_ids])
@@ -188,68 +264,141 @@ with main_tabs[0]:
     # ------------------------------------------------------------------
     # 6.  Comparison engine
     # ------------------------------------------------------------------
-    def agent_compare(df, exchange_df, loadability, box_rate, origin_charge):
+    def nom(con_cbm,con_bl,freight_cost,market_rate,nomination_rate,nomination_cbm,nomination_bl,rebate_cbm,rebate_bl,rebate_per_container,tran_cbm_f,tran_pro_per_cbm_f):
+        free_hand_volume = float(con_cbm) - float(nomination_cbm)
+        free_hand_bl = int(con_bl-nomination_bl)
+
+        pro_free_hand = (free_hand_volume*market_rate)+(free_hand_volume*rebate_cbm)-(free_hand_volume*freight_cost)+(free_hand_bl*rebate_bl)
+        pro_nomination = (nomination_rate-freight_cost)*nomination_cbm
+
+        pro_sum = pro_free_hand+pro_nomination+rebate_per_container+(tran_cbm_f*tran_pro_per_cbm_f)
+
+        return free_hand_volume,free_hand_bl,pro_free_hand,pro_nomination,pro_sum
+    
+    def agent_compare(df,nom_df,input_dict,exchange_df):
         money_cols = ['Per CBM', 'Per Ton', 'Minimum', 'Maximum', 'Per BL']
 
-        # -------- 1. INR → USD factor & cost/WM
-        inr_rate   = exchange_df.loc[exchange_df['Currency'].eq('INR'),
-                                     'Exchange Rate to USD'].astype(float).squeeze()
-        origin_usd = origin_charge * inr_rate
-        cost_per_wm = (box_rate + origin_usd) / loadability
+        loadability_20_f = input_dict["20'STD"][0]
+        box_rate_20_f = input_dict["20'STD"][1]
+        num_bl_20_f = input_dict["20'STD"][2]
+        market_rate_20_f = input_dict["20'STD"][3]
+        tran_cbm_20_f = input_dict["20'STD"][4]
+        tran_num_bl_20_f = input_dict["20'STD"][5]
+        tran_pro_per_cbm_20_f = input_dict["20'STD"][6]
+        con_cbm_20 = float(loadability_20_f)-float(tran_cbm_20_f)
+        freight_cost_20 = float(box_rate_20_f)/float(loadability_20_f)
+        con_bl_20 = float(num_bl_20_f)-float(tran_num_bl_20_f)
 
-        # -------- 2. Clean numeric columns
+        loadability_40_f = input_dict["40'STD"][0]
+        box_rate_40_f = input_dict["40'STD"][1]
+        num_bl_40_f = input_dict["40'STD"][2]
+        market_rate_40_f = input_dict["40'STD"][3]
+        tran_cbm_40_f = input_dict["40'STD"][4]
+        tran_num_bl_40_f = input_dict["40'STD"][5]
+        tran_pro_per_cbm_40_f = input_dict["20'STD"][6]
+        con_cbm_40 = float(loadability_40_f)-float(tran_cbm_40_f)
+        freight_cost_40 = float(box_rate_40_f)/float(loadability_40_f)
+        con_bl_40 = float(num_bl_40_f)-float(tran_num_bl_40_f)
+
+        # Clean numeric columns
         df[money_cols] = (df[money_cols]
-                          .replace(r'^\s*$', np.nan, regex=True)
-                          .apply(pd.to_numeric, errors='coerce')
-                          .fillna(0))
+                        .replace(r'^\s*$', np.nan, regex=True)
+                        .apply(pd.to_numeric, errors='coerce')
+                        .fillna(0))
 
-        # -------- 3. Currency → USD map
+        # Currency → USD map
         rate_map = dict(zip(exchange_df['Currency'],
                             exchange_df['Exchange Rate to USD'].astype(float)))
         rate_map.setdefault('USD', 1.0)
 
-        # -------- 4. Per‑agent calculation
+        # Output rows
         rows_out = []
+        nomination_out = []
         for agent, grp in df.groupby('Agent Name', sort=False):
             rebate_df  = grp[grp['Description'] == 'Rebate']
             remarks_df = grp[grp['Description'] == 'Remarks']
             charge_df  = grp[~grp['Description'].isin(['Rebate', 'Remarks'])]
 
             remark = remarks_df['Currency'].iloc[0] if not remarks_df.empty else ""
+            nomination_rate = nom_df[nom_df['Agent Name'] == agent]["Nomination Rate"].values[0]
+            nomination_cbm = nom_df[nom_df['Agent Name'] == agent]["Nomination CBM"].values[0]
+            nomination_bl = nom_df[nom_df['Agent Name'] == agent]["Nomination BL"].values[0]
 
-            # --- rebate figures
+            # Rebates
             if rebate_df.empty:
-                rebate_cbm = rebate_per_ton = rebate_bl = 0.0
+                rebate_cbm = rebate_per_ton = rebate_bl = rebate_per_container = 0.0
             else:
                 r_cur = rebate_df.iloc[0]['Currency']
                 r_rate = rate_map.get(r_cur, np.nan)
-                rebate_cbm = rebate_df.iloc[0]['Per CBM'] * r_rate if not np.isnan(r_rate) else 0
-                rebate_bl  = rebate_df.iloc[0]['Per BL']  * r_rate if not np.isnan(r_rate) else 0
-                rebate_per_ton = rebate_df.iloc[0]['Per Ton']  * r_rate if not np.isnan(r_rate) else 0
+                rebate_cbm     = rebate_df.iloc[0]['Per CBM'] * r_rate if not np.isnan(r_rate) else 0
+                rebate_bl      = rebate_df.iloc[0]['Per BL']  * r_rate if not np.isnan(r_rate) else 0
+                rebate_per_ton = rebate_df.iloc[0]['Per Ton'] * r_rate if not np.isnan(r_rate) else 0
+                rebate_per_container = float(rebate_df.iloc[0]["Per Container"]) * r_rate if not np.isnan(r_rate) else 0
 
-            # --- charge totals
+            free_hand_volume_20,free_hand_bl_20,pro_free_hand_20,pro_nomination_20,pro_sum_20 = nom(con_cbm_20,con_bl_20,freight_cost_20,market_rate_20_f,
+                                                                                                    nomination_rate,nomination_cbm,nomination_bl,rebate_cbm,rebate_bl,
+                                                                                                    rebate_per_container,tran_cbm_20_f,tran_pro_per_cbm_20_f)
+            free_hand_volume_40,free_hand_bl_40,pro_free_hand_40,pro_nomination_40,pro_sum_40 = nom(con_cbm_40,con_bl_40,freight_cost_40,market_rate_40_f,
+                                                                                                    nomination_rate,nomination_cbm,nomination_bl,rebate_cbm,rebate_bl,
+                                                                                                    rebate_per_container,tran_cbm_40_f,tran_pro_per_cbm_40_f)
+            
+            now_row1 = {"Agent Name":agent,"Container Type":"20'STD","Box Rate":box_rate_20_f,"Total Loadability":loadability_20_f,
+                        "Freight Cost":freight_cost_20,"Total Number of BLs":num_bl_20_f,"Market Rate":market_rate_20_f,
+                        "Nomination Rate":nomination_rate,"Transhipment CBM":tran_cbm_20_f,"Transhipment Number of BLs":tran_num_bl_20_f,
+                        "Transhipment Profitability Per CBM":tran_pro_per_cbm_20_f,"Rebate Per CBM":rebate_cbm,"Rebate Per BL":rebate_bl,"Nomination CBM":nomination_cbm,
+                        "Nomination BL":nomination_bl,"Considered CBM":con_cbm_20,"Considered BLs":con_bl_20,
+                        "Free Hand CBM":free_hand_volume_20,"Free Hand BL":free_hand_bl_20,"Profitability on Free Hand":pro_free_hand_20,
+                        "Profitability on Nomination":pro_nomination_20,"Sum of Profitability":pro_sum_20}
+            
+            now_row2 = {"Agent Name":agent,"Container Type":"40'STD","Box Rate":box_rate_40_f,"Total Loadability":loadability_40_f,
+                        "Freight Cost":freight_cost_40,"Total Number of BLs":num_bl_40_f,"Market Rate":market_rate_40_f,
+                        "Nomination Rate":nomination_rate,"Transhipment CBM":tran_cbm_40_f,"Transhipment Number of BLs":tran_num_bl_40_f,
+                        "Transhipment Profitability Per CBM":tran_pro_per_cbm_20_f,"Rebate Per CBM":rebate_cbm,"Rebate Per BL":rebate_bl,"Nomination CBM":nomination_cbm,
+                        "Nomination BL":nomination_bl,"Considered CBM":con_cbm_40,"Considered BLs":con_bl_40,
+                        "Free Hand CBM":free_hand_volume_40,"Free Hand BL":free_hand_bl_40,"Profitability on Free Hand":pro_free_hand_40,
+                        "Profitability on Nomination":pro_nomination_40,"Sum of Profitability":pro_sum_40}
+            
+            nomination_out.extend([now_row1, now_row2])
+
+            # Total charges
             totals = charge_df.apply(
                 lambda row: row[money_cols] * rate_map.get(row['Currency'], np.nan),
                 axis=1
             ).sum()
             tot_cbm, tot_bl, tot_ton = totals['Per CBM'], totals['Per BL'], totals['Per Ton']
 
-            # --- build output row
-            out = {"Agent Name": agent, "Remarks": remark}
+            row1 = {"Agent Name": agent, "Remarks": remark, "Type": "Destination Charges"}
+            row2 = {"Agent Name": agent, "Remarks": remark, "Type": "Fixed Charges (BL)"}
+            row3 = {"Agent Name": agent, "Remarks": remark, "Type": "Rebate (CBM or Ton)"}
+            row4 = {"Agent Name": agent, "Remarks": remark, "Type": "Rebate (BL)"}
+            row5 = {"Agent Name": agent, "Remarks": remark, "Type": "Net Charges"}
+
             for n in range(1, 31):
                 tpc = tot_cbm * n
-                tpt = tot_ton * (n/2)
+                tpt = tot_ton * (n / 2)  # as per your logic: ton weight = CBM / 2
+
                 if tpc > tpt:
                     con = tpc
                     rcon = rebate_cbm * n
                 else:
                     con = tpt
-                    rcon = rebate_per_ton * (n/2)
-                dest_chg = tot_bl + con
-                out[f"CBM {n}"] = (cost_per_wm * n) + dest_chg - (rcon) - rebate_bl
-            rows_out.append(out)
+                    rcon = rebate_per_ton * (n / 2)
 
-        return pd.DataFrame(rows_out)
+                dest_chg = tot_bl + con
+                net = dest_chg - rcon - rebate_bl
+
+                row1[f"CBM {n}"] = round(con, 2)
+                row2[f"CBM {n}"] = round(tot_bl, 2)
+                row3[f"CBM {n}"] = round(rcon, 2)
+                row4[f"CBM {n}"] = round(rebate_bl, 2)
+                row5[f"CBM {n}"] = round(net, 2)
+
+            rows_out.extend([row1, row2, row3, row4, row5])
+
+        comp_df = pd.DataFrame(rows_out)
+        nomination_df = pd.DataFrame(nomination_out)
+        return comp_df,nomination_df
+
 
     st.markdown("### 🛠️ Actions")
     calc_btn, dl_placeholder, save_placeholder = st.columns([1, 1, 1])
@@ -257,25 +406,64 @@ with main_tabs[0]:
     # 7‑A Calculate
     if calc_btn.button("🧮 Calculate"):
         try:
-            load_f   = float(loadability)
-            box_f    = float(box_rate)
-            origin_f = float(origin_charges)
+            box_rate_20_f = float(box_rate_20)
+            loadability_20_f = float(loadability_20)
+            num_bl_20_f = float(num_bl_20)
+            market_rate_20_f = float(market_rate_20)
+            tran_cbm_20_f = float(tran_cbm_20)
+            tran_num_bl_20_f = float(tran_num_bl_20)
+            tran_pro_per_cbm_20_f = float(tran_pro_per_cbm_20)
+
+            box_rate_40_f = float(box_rate_40)
+            loadability_40_f = float(loadability_40)
+            num_bl_40_f = float(num_bl_40)
+            market_rate_40_f = float(market_rate_40)
+            tran_cbm_40_f = float(tran_cbm_40)
+            tran_num_bl_40_f = float(tran_num_bl_40)
+            tran_pro_per_cbm_40_f = float(tran_pro_per_cbm_40)
+
         except ValueError:
             st.error("Loadability, Box Rate, and Origin Charges must be numeric.")
             st.stop()
 
-        in_df  = extract_agent_data()
-        out_df = agent_compare(in_df, exchange_df, load_f, box_f, origin_f)
+        input_dict = {
+                "20'STD": [
+                    loadability_20_f, box_rate_20_f, num_bl_20_f, market_rate_20_f,
+                    tran_cbm_20_f, tran_num_bl_20_f, tran_pro_per_cbm_20_f
+                ],
+                "40'STD": [
+                    loadability_40_f, box_rate_40_f, num_bl_40_f, market_rate_40_f,
+                    tran_cbm_40_f, tran_num_bl_40_f, tran_pro_per_cbm_40_f
+                ]
+        }
+        in_df, nom_df  = extract_agent_data()
+        comp_df,nomination_df = agent_compare(in_df,nom_df,input_dict,exchange_df)
 
         st.session_state["container_info"] = pd.DataFrame({
-            "Field": ["Container Type", "Loadability", "Box Rate (USD)", "Origin Charges (INR)"],
-            "Value": [container_type, load_f, box_f, origin_f]
-        })
+                "Field": [
+                    "Loadability", "Box Rate (USD)", "Number of BLs", "Market Rate (USD)",
+                    "Transhipment CBM", "Transhipment Number of BLs", "Transhipment Profitability Per CBM"
+                ],
+                "20'STD": [
+                    loadability_20_f, box_rate_20_f, num_bl_20_f, market_rate_20_f,
+                    tran_cbm_20_f, tran_num_bl_20_f, tran_pro_per_cbm_20_f
+                ],
+                "40'STD": [
+                    loadability_40_f, box_rate_40_f, num_bl_40_f, market_rate_40_f,
+                    tran_cbm_40_f, tran_num_bl_40_f, tran_pro_per_cbm_40_f
+                ]
+            })
+
         st.session_state["last_input_df"]  = in_df
-        st.session_state["last_result_df"] = out_df
+        st.session_state["last_nom_df"] = nom_df
+        st.session_state["last_result_df"] = comp_df
+        st.session_state["last_nomination_df"] = nomination_df
+
 
         st.success("Calculation complete.")
-        st.dataframe(out_df)
+        st.dataframe(comp_df)
+        st.dataframe(nom_df)
+        st.dataframe(nomination_df)
 
     # 7‑B Download (only if data exists)
     def to_safe_sheet(name: str) -> str:
@@ -292,7 +480,9 @@ with main_tabs[0]:
                 for agent, grp in st.session_state["last_input_df"].groupby("Agent Name", sort=False):
                     grp.to_excel(writer, sheet_name=to_safe_sheet(agent), index=False)
 
+                st.session_state["last_nom_df"].to_excel(writer, sheet_name="Nomination Support % Details", index=False)
                 st.session_state["last_result_df"].to_excel(writer, sheet_name="Comparison", index=False)
+                st.session_state["last_nomination_df"].to_excel(writer, sheet_name="Nomination", index = False)
 
             buf.seek(0)
             st.download_button(
