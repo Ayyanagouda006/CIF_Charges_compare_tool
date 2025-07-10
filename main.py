@@ -471,7 +471,7 @@ with main_tabs[0]:
         name = re.sub(r"[\[\]\*:/\\?]", "", name)[:31]
         return name or "Sheet"
 
-    if all(k in st.session_state for k in ("container_info", "last_input_df", "last_result_df")):
+    if all(k in st.session_state for k in ("container_info", "last_input_df", "last_result_df","last_nomination_df")):
         with dl_placeholder:
             buf = BytesIO()
             with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
@@ -480,7 +480,7 @@ with main_tabs[0]:
                 for agent, grp in st.session_state["last_input_df"].groupby("Agent Name", sort=False):
                     grp.to_excel(writer, sheet_name=to_safe_sheet(agent), index=False)
 
-                st.session_state["last_nom_df"].to_excel(writer, sheet_name="Nomination Support % Details", index=False)
+                st.session_state["last_nom_df"].to_excel(writer, sheet_name="Nomination Support Details", index=False)
                 st.session_state["last_result_df"].to_excel(writer, sheet_name="Comparison", index=False)
                 st.session_state["last_nomination_df"].to_excel(writer, sheet_name="Nomination", index = False)
 
@@ -517,7 +517,9 @@ with main_tabs[0]:
                             st.session_state["container_info"].to_excel(writer, sheet_name="Info", index=False)
                             for agent, grp in st.session_state["last_input_df"].groupby("Agent Name", sort=False):
                                 grp.to_excel(writer, sheet_name=to_safe_sheet(agent), index=False)
+                            st.session_state["last_nom_df"].to_excel(writer, sheet_name="Nomination Support Details", index=False)
                             st.session_state["last_result_df"].to_excel(writer, sheet_name="Comparison", index=False)
+                            st.session_state["last_nomination_df"].to_excel(writer, sheet_name="Nomination", index = False)
                         st.success(f"Comparison saved as '{safe_name}.xlsx' in the Saved folder.")
                         st.session_state.save_mode = False
                 if cancel_col.button("❌ Cancel"):
