@@ -45,7 +45,13 @@ currency_options = get_currency_list(exchange_df)
 # ==============================================================================
 # MAIN NAVIGATION TABS
 # ==============================================================================
-main_tabs = st.tabs(["📊 Comparison Calculator", "📂 Saved Comparisons", "💱 Exchange Rates"])
+main_tabs = st.tabs([
+    "📊 Comparison Calculator",
+    "📂 Saved Comparisons",
+    "💱 Exchange Rates",
+    "🚢 Port of Discharge"
+])
+
 
 # ==============================================================================
 # TAB 1: COMPARISON CALCULATOR
@@ -646,3 +652,29 @@ with main_tabs[2]:
                 st.error(f"Error saving exchange rates: {e}")
         else:
             st.error("Please ensure 'Currency' and 'Exchange Rate to USD' columns exist.")
+
+with main_tabs[3]:
+    st.title("🚢 Edit Port Of Discharge")
+    st.caption("You can update or add new PODs. Click save to apply changes.")
+
+    # Load POD Excel Sheet
+    pod_path = "Data/locations.xlsx"
+    pod_df = pd.read_excel(pod_path, sheet_name="POD locations")
+
+    # Data Editor
+    edited_pod_df = st.data_editor(
+        pod_df,
+        num_rows="dynamic",
+        use_container_width=True,
+        key="pod_editor"
+    )
+
+    # Save Button
+    if st.button("💾 Save PODs"):
+        try:
+            # Overwrite same sheet in the Excel file
+            with pd.ExcelWriter(pod_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+                edited_pod_df.to_excel(writer, sheet_name="POD locations", index=False)
+            st.success("POD list saved successfully. Please refresh to see changes.")
+        except Exception as e:
+            st.error(f"Error saving PODs: {e}")
