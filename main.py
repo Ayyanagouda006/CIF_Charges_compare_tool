@@ -139,36 +139,48 @@ with main_tabs[0]:
     def extract_agent_data() -> pd.DataFrame:
         rows = []
         nom_rows = []
+
         for agent_id in st.session_state.agent_ids:
-            agent_name = st.session_state.get(f"agent_name_{agent_id}", f"Agent {agent_id}")
+            agent_name = st.session_state.get(f"agent_name_{agent_id}", f"Agent {agent_id}")
             nomination_rate = st.session_state.get(f"nom_support_rate_{agent_id}", 0)
             nomination_cbm = st.session_state.get(f"nom_support_cbm_{agent_id}", 0)
             nomination_bl = st.session_state.get(f"nom_support_bl_{agent_id}", 0)
-            nom_rows.append({"Agent Name":agent_name,"Nomination Rate":nomination_rate,"Nomination CBM":nomination_cbm, "Nomination BL":nomination_bl})
-            
-            # destination charges rows 1‑8
-            for i in range(1, 9):
+
+            nom_rows.append({
+                "Agent Name": agent_name,
+                "Nomination Rate": nomination_rate,
+                "Nomination CBM": nomination_cbm,
+                "Nomination BL": nomination_bl
+            })
+
+            # 🔁 Extract dynamic number of charge head rows
+            num_rows = st.session_state.get(f"{agent_id}_num_charge_rows", 8)
+            for i in range(1, num_rows + 1):
+                desc = st.session_state.get(f"{agent_id}_desc_{i}", "")
+                if desc.strip() == "":
+                    continue  # skip empty rows
+
                 rows.append({
                     "Agent Name": agent_name,
-                    "Description": st.session_state.get(f"{agent_id}_desc_{i}", ""),
+                    "Description": desc,
                     "Currency":    st.session_state.get(f"{agent_id}_currency_{i}", ""),
                     "Per CBM":     st.session_state.get(f"{agent_id}_cbm_{i}", ""),
                     "Per Ton":     st.session_state.get(f"{agent_id}_ton_{i}", ""),
                     "Minimum":     st.session_state.get(f"{agent_id}_min_{i}", ""),
                     "Maximum":     st.session_state.get(f"{agent_id}_max_{i}", ""),
                     "Per BL":      st.session_state.get(f"{agent_id}_bl_{i}", ""),
-                    "Per Container":""
+                    "Per Container": ""
                 })
 
-            # remarks row
+            # 📝 Notes row (Charge Head 9 Notes)
             rows.append({
                 "Agent Name": agent_name,
                 "Description": "Remarks",
-                "Currency":    st.session_state.get(f"{agent_id}_desc_9", ""),
-                "Per CBM": "", "Per Ton": "", "Minimum": "", "Maximum": "", "Per BL": "", "Per Container":""
+                "Currency":    st.session_state.get(f"{agent_id}_desc_9_notes", ""),
+                "Per CBM": "", "Per Ton": "", "Minimum": "", "Maximum": "", "Per BL": "", "Per Container": ""
             })
 
-            # rebate row
+            # 🎯 Rebate row
             rows.append({
                 "Agent Name": agent_name,
                 "Description": "Rebate",
@@ -177,14 +189,15 @@ with main_tabs[0]:
                 "Per Ton":   st.session_state.get(f"{agent_id}_rebate_ton", ""),
                 "Minimum": "", "Maximum": "",
                 "Per BL":    st.session_state.get(f"{agent_id}_rebate_bl", ""),
-                "Per Container": st.session_state.get(f"{agent_id}_rebate_container")
+                "Per Container": st.session_state.get(f"{agent_id}_rebate_container", "")
             })
 
         df = pd.DataFrame(rows)
-        agent_df = df[df["Description"].fillna("").str.strip() != ""]
+        agent_df = df[df["Description"].fillna("").str.strip() != ""]  # remove blank desc rows
         nomination_df = pd.DataFrame(nom_rows)
-        # keep only non‑empty descriptions
-        return agent_df,nomination_df
+
+        return agent_df, nomination_df
+
 
     # ------------------------------------------------------------------
     # 5.  Agent‑entry form UI
@@ -223,29 +236,38 @@ with main_tabs[0]:
             value=int(st.session_state.get(f"nom_support_bl_{agent_id}", 0))
         )
 
-
+        # ─────────  Charge Head Entry Section ─────────
         st.markdown("***Destination Charges (CIF)***")
         head_cols = st.columns([3, 1, 1, 1, 1, 1, 1])
         for col, h in zip(head_cols,
-                          ["Charge Head", "Currency", "Per CBM", "Per Ton",
-                           "Minimum", "Maximum", "Per BL"]):
+                        ["Charge Head", "Currency", "Per CBM", "Per Ton",
+                        "Minimum", "Maximum", "Per BL"]):
             col.markdown(f"**{h}**")
 
-        for i in range(1, 9):
+        # Init number of rows if not already set
+        if f"{agent_id}_num_charge_rows" not in st.session_state:
+            st.session_state[f"{agent_id}_num_charge_rows"] = 8
+
+        # Render dynamic number of charge head rows
+        for i in range(1, st.session_state[f"{agent_id}_num_charge_rows"] + 1):
             cols = st.columns([3, 1, 1, 1, 1, 1, 1])
             cols[0].text_input("", key=f"{agent_id}_desc_{i}",
-                               label_visibility="collapsed", placeholder=f"Charge Head {i}")
+                            label_visibility="collapsed", placeholder=f"Charge Head {i}")
             cols[1].selectbox("", currency_options, key=f"{agent_id}_currency_{i}",
-                              label_visibility="collapsed",
-                              index=currency_options.index("USD")
-                              if "USD" in currency_options else 0)
+                            label_visibility="collapsed",
+                            index=currency_options.index("USD")
+                            if "USD" in currency_options else 0)
             cols[2].text_input("", key=f"{agent_id}_cbm_{i}",  label_visibility="collapsed")
             cols[3].text_input("", key=f"{agent_id}_ton_{i}",  label_visibility="collapsed")
             cols[4].text_input("", key=f"{agent_id}_min_{i}",  label_visibility="collapsed")
             cols[5].text_input("", key=f"{agent_id}_max_{i}",  label_visibility="collapsed")
             cols[6].text_input("", key=f"{agent_id}_bl_{i}",   label_visibility="collapsed")
 
-        st.text_input("Charge Head 9 Notes", key=f"{agent_id}_desc_9",
+        # Add Charge Head button
+        if st.button("➕ Add Charge Head", key=f"add_charge_head_{agent_id}"):
+            st.session_state[f"{agent_id}_num_charge_rows"] += 1
+
+        st.text_input("Charge Head Notes", key=f"{agent_id}_desc_notes",
                       placeholder="If Cartons, …")
 
         st.markdown("***Rebates***")
