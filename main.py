@@ -53,6 +53,16 @@ main_tabs = st.tabs(["📊 Comparison Calculator", "📂 Saved Comparisons", "�
 with main_tabs[0]:
     st.title("LCL Destination Charges Comparison Calculator")
 
+    locations_df = pd.read_excel(r"Data/locations.xlsx", sheet_name="POD locations")
+    pod_list = sorted(locations_df['POD'].dropna().unique())
+    # Create two columns for POL and POD dropdowns
+    col1, col2 = st.columns(2)
+
+    with col1:
+        pol = st.selectbox("**Port of Loading (POL)**", ["Nhava Sheva"],key="pol")
+
+    with col2:
+        pod = st.selectbox("**Port of Discharge (POD)**", pod_list,key="pod")
     # ------------------------------------------------------------------
     # 2.  Container‑level inputs
     # ------------------------------------------------------------------
@@ -345,7 +355,8 @@ with main_tabs[0]:
             now_row1 = {"Agent Name":agent,"Container Type":"20'STD","Box Rate":box_rate_20_f,"Total Loadability":loadability_20_f,
                         "Freight Cost":freight_cost_20,"Total Number of BLs":num_bl_20_f,"Market Rate":market_rate_20_f,
                         "Nomination Rate":nomination_rate,"Transhipment CBM":tran_cbm_20_f,"Transhipment Number of BLs":tran_num_bl_20_f,
-                        "Transhipment Profitability Per CBM":tran_pro_per_cbm_20_f,"Rebate Per CBM":rebate_cbm,"Rebate Per BL":rebate_bl,"Nomination CBM":nomination_cbm,
+                        "Transhipment Profitability Per CBM":tran_pro_per_cbm_20_f,"Rebate Per CBM":rebate_cbm,"Rebate Per BL":rebate_bl,
+                        "Rebate Per Container":rebate_per_container,"Nomination CBM":nomination_cbm,
                         "Nomination BL":nomination_bl,"Considered CBM":con_cbm_20,"Considered BLs":con_bl_20,
                         "Free Hand CBM":free_hand_volume_20,"Free Hand BL":free_hand_bl_20,"Profitability on Free Hand":pro_free_hand_20,
                         "Profitability on Nomination":pro_nomination_20,"Sum of Profitability":pro_sum_20}
@@ -353,7 +364,8 @@ with main_tabs[0]:
             now_row2 = {"Agent Name":agent,"Container Type":"40'STD","Box Rate":box_rate_40_f,"Total Loadability":loadability_40_f,
                         "Freight Cost":freight_cost_40,"Total Number of BLs":num_bl_40_f,"Market Rate":market_rate_40_f,
                         "Nomination Rate":nomination_rate,"Transhipment CBM":tran_cbm_40_f,"Transhipment Number of BLs":tran_num_bl_40_f,
-                        "Transhipment Profitability Per CBM":tran_pro_per_cbm_20_f,"Rebate Per CBM":rebate_cbm,"Rebate Per BL":rebate_bl,"Nomination CBM":nomination_cbm,
+                        "Transhipment Profitability Per CBM":tran_pro_per_cbm_20_f,"Rebate Per CBM":rebate_cbm,"Rebate Per BL":rebate_bl,
+                        "Rebate Per Container":rebate_per_container,"Nomination CBM":nomination_cbm,
                         "Nomination BL":nomination_bl,"Considered CBM":con_cbm_40,"Considered BLs":con_bl_40,
                         "Free Hand CBM":free_hand_volume_40,"Free Hand BL":free_hand_bl_40,"Profitability on Free Hand":pro_free_hand_40,
                         "Profitability on Nomination":pro_nomination_40,"Sum of Profitability":pro_sum_40}
@@ -441,15 +453,15 @@ with main_tabs[0]:
 
         st.session_state["container_info"] = pd.DataFrame({
                 "Field": [
-                    "Loadability", "Box Rate (USD)", "Number of BLs", "Market Rate (USD)",
+                    "POL","POD","Loadability", "Box Rate (USD)", "Number of BLs", "Market Rate (USD)",
                     "Transhipment CBM", "Transhipment Number of BLs", "Transhipment Profitability Per CBM"
                 ],
                 "20'STD": [
-                    loadability_20_f, box_rate_20_f, num_bl_20_f, market_rate_20_f,
+                    pol,pod,loadability_20_f, box_rate_20_f, num_bl_20_f, market_rate_20_f,
                     tran_cbm_20_f, tran_num_bl_20_f, tran_pro_per_cbm_20_f
                 ],
                 "40'STD": [
-                    loadability_40_f, box_rate_40_f, num_bl_40_f, market_rate_40_f,
+                    pol,pod,loadability_40_f, box_rate_40_f, num_bl_40_f, market_rate_40_f,
                     tran_cbm_40_f, tran_num_bl_40_f, tran_pro_per_cbm_40_f
                 ]
             })
