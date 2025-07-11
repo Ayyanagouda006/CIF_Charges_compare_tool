@@ -7,6 +7,8 @@ import numpy as np
 import os
 import re
 from io import BytesIO
+import zipfile
+
 
 # ----------------------------------------------------------------------
 # 0.  Page setup (MUST be first Streamlit call)
@@ -175,6 +177,7 @@ with main_tabs[0]:
                     "Minimum":     st.session_state.get(f"{agent_id}_min_{i}", ""),
                     "Maximum":     st.session_state.get(f"{agent_id}_max_{i}", ""),
                     "Per BL":      st.session_state.get(f"{agent_id}_bl_{i}", ""),
+                    "Vat(%)" :     st.session_state.get(f"{agent_id}_vat_{i}",""),
                     "Per Container": ""
                 })
 
@@ -183,7 +186,7 @@ with main_tabs[0]:
                 "Agent Name": agent_name,
                 "Description": "Remarks",
                 "Currency":    st.session_state.get(f"{agent_id}_desc_9_notes", ""),
-                "Per CBM": "", "Per Ton": "", "Minimum": "", "Maximum": "", "Per BL": "", "Per Container": ""
+                "Per CBM": "", "Per Ton": "", "Minimum": "", "Maximum": "", "Per BL": "", "Vat(%)" : "", "Per Container": ""
             })
 
             # 🎯 Rebate row
@@ -194,7 +197,7 @@ with main_tabs[0]:
                 "Per CBM":   st.session_state.get(f"{agent_id}_rebate_cbm", ""),
                 "Per Ton":   st.session_state.get(f"{agent_id}_rebate_ton", ""),
                 "Minimum": "", "Maximum": "",
-                "Per BL":    st.session_state.get(f"{agent_id}_rebate_bl", ""),
+                "Per BL":    st.session_state.get(f"{agent_id}_rebate_bl", ""), "Vat(%)" : "",
                 "Per Container": st.session_state.get(f"{agent_id}_rebate_container", "")
             })
 
@@ -242,32 +245,31 @@ with main_tabs[0]:
             value=int(st.session_state.get(f"nom_support_bl_{agent_id}", 0))
         )
 
-        # ─────────  Charge Head Entry Section ─────────
+        # Destination Charges Header (Fixed)
         st.markdown("***Destination Charges (CIF)***")
-        head_cols = st.columns([3, 1, 1, 1, 1, 1, 1])
+        head_cols = st.columns([3, 1, 1, 1, 1, 1, 1, 1])  # Fixed to 8 columns
         for col, h in zip(head_cols,
-                        ["Charge Head", "Currency", "Per CBM", "Per Ton",
-                        "Minimum", "Maximum", "Per BL"]):
+                            ["Charge Head", "Currency", "Per CBM", "Per Ton",
+                            "Minimum", "Maximum", "Per BL", "Vat(%)"]):
             col.markdown(f"**{h}**")
 
-        # Init number of rows if not already set
         if f"{agent_id}_num_charge_rows" not in st.session_state:
             st.session_state[f"{agent_id}_num_charge_rows"] = 8
 
-        # Render dynamic number of charge head rows
         for i in range(1, st.session_state[f"{agent_id}_num_charge_rows"] + 1):
-            cols = st.columns([3, 1, 1, 1, 1, 1, 1])
+            cols = st.columns([3, 1, 1, 1, 1, 1, 1, 1])
             cols[0].text_input("", key=f"{agent_id}_desc_{i}",
                             label_visibility="collapsed", placeholder=f"Charge Head {i}")
             cols[1].selectbox("", currency_options, key=f"{agent_id}_currency_{i}",
-                            label_visibility="collapsed",
-                            index=currency_options.index("USD")
-                            if "USD" in currency_options else 0)
-            cols[2].text_input("", key=f"{agent_id}_cbm_{i}",  label_visibility="collapsed")
-            cols[3].text_input("", key=f"{agent_id}_ton_{i}",  label_visibility="collapsed")
-            cols[4].text_input("", key=f"{agent_id}_min_{i}",  label_visibility="collapsed")
-            cols[5].text_input("", key=f"{agent_id}_max_{i}",  label_visibility="collapsed")
-            cols[6].text_input("", key=f"{agent_id}_bl_{i}",   label_visibility="collapsed")
+                label_visibility="collapsed",
+                index=currency_options.index("USD")
+                if "USD" in currency_options else 0)
+            cols[2].text_input("", key=f"{agent_id}_cbm_{i}", label_visibility="collapsed")
+            cols[3].text_input("", key=f"{agent_id}_ton_{i}", label_visibility="collapsed")
+            cols[4].text_input("", key=f"{agent_id}_min_{i}", label_visibility="collapsed")
+            cols[5].text_input("", key=f"{agent_id}_max_{i}", label_visibility="collapsed")
+            cols[6].text_input("", key=f"{agent_id}_bl_{i}", label_visibility="collapsed")
+            cols[7].text_input("", key=f"{agent_id}_vat_{i}", label_visibility="collapsed")
 
         # Add Charge Head button
         if st.button("➕ Add Charge Head", key=f"add_charge_head_{agent_id}"):
@@ -439,6 +441,11 @@ with main_tabs[0]:
         nomination_df = pd.DataFrame(nomination_out)
         return comp_df,nomination_df
 
+    st.markdown("""
+    <div style="color: red; font-weight: bold;">
+    ⚠️ Please note: <u>VAT(%) is not included</u> in any of the comparison or calculation logic.
+    </div>
+    """, unsafe_allow_html=True)
 
     st.markdown("### 🛠️ Actions")
     calc_btn, dl_placeholder, save_placeholder = st.columns([1, 1, 1])
@@ -580,7 +587,27 @@ with main_tabs[1]:
     if not saved_files:
         st.info("No saved comparisons found. Return to the first tab, perform a calculation, and save it.")
     else:
-        selected_file = st.selectbox("Select a saved comparison to view:", saved_files)
+        # Dropdown + Download All in one row
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            selected_file = st.selectbox("Select a saved comparison to view:", saved_files)
+
+        with col2:
+            # Prepare a zip file containing all saved Excel comparisons
+            zip_buffer = BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w") as zipf:
+                for f in saved_files:
+                    zipf.write(os.path.join(SAVED_DIR, f), arcname=f)
+            zip_buffer.seek(0)
+
+            st.download_button(
+                label="📦 Download All",
+                data=zip_buffer,
+                file_name="All_Comparisons.zip",
+                mime="application/zip"
+            )
+
+
         if selected_file:
             file_path = os.path.join(SAVED_DIR, selected_file)
 
