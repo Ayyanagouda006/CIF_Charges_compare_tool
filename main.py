@@ -882,36 +882,35 @@ with main_tabs[1]:
 
             row_count = len(charge_rows) if not charge_rows.empty else 1
             row_key = f"saved_{agent_id}_num_charge_rows"
+
             if row_key not in st.session_state:
                 st.session_state[row_key] = row_count
 
+
             for i, (_, row_data) in enumerate(charge_rows.iterrows(), start=1):
                 for field, default in zip(["desc", "currency", "cbm", "ton", "min", "max", "bl", "vat"],
-                                          ["Description", "Currency", "Per CBM", "Per Ton", "Minimum", "Maximum", "Per BL", "VAT"]):
+                                        ["Description", "Currency", "Per CBM", "Per Ton", "Minimum", "Maximum", "Per BL", "VAT"]):
                     key = f"saved_{agent_id}_{field}_{i}"
-                    if key not in st.session_state:
-                        st.session_state[key] = str(row_data.get(default, ""))
+                    st.session_state[key] = str(row_data.get(default, ""))
 
-            if not remarks_row.empty and f"saved_{agent_id}_desc_notes" not in st.session_state:
+            if not remarks_row.empty:
                 st.session_state[f"saved_{agent_id}_desc_notes"] = str(remarks_row.iloc[0].get("Currency", ""))
 
             if not rebate_row.empty:
                 r = rebate_row.iloc[0]
                 for field, col in zip(["currency", "cbm", "ton", "bl", "container"],
-                                      ["Currency", "Per CBM", "Per Ton", "Per BL", "Per Container"]):
+                                    ["Currency", "Per CBM", "Per Ton", "Per BL", "Per Container"]):
                     key = f"saved_{agent_id}_rebate_{field}"
-                    if key not in st.session_state:
-                        st.session_state[key] = str(r.get(col, ""))
+                    st.session_state[key] = str(r.get(col, ""))
 
             for field, val in zip(["rate", "cbm", "bl"], [nomination_rate, nomination_cbm, nomination_bl]):
                 key = f"saved_nom_support_{field}_{agent_id}"
-                if key not in st.session_state:
-                    st.session_state[key] = val
+                st.session_state[key] = val
 
             c1, c2 = st.columns([5, 1])
             with c1:
                 st.text_input("***Agent Name***", key=f"saved_agent_name_{agent_id}",
-                              value=st.session_state.saved_agent_names.get(agent_id, f"Saved Agent {agent_id}"))
+                            value=st.session_state.saved_agent_names.get(agent_id, f"Saved Agent {agent_id}"))
             with c2:
                 if st.button("❌", key=f"saved_del_agent_btn_{agent_id}"):
                     delete_saved_agent(agent_id)
@@ -931,9 +930,11 @@ with main_tabs[1]:
             for i in range(1, st.session_state[row_key] + 1):
                 cols = st.columns([3, 1, 1, 1, 1, 1, 1, 1])
                 cols[0].text_input("", key=f"saved_{agent_id}_desc_{i}", label_visibility="collapsed")
+
                 currency = st.session_state.get(f"saved_{agent_id}_currency_{i}", "USD")
                 index = currency_options.index(currency) if currency in currency_options else 0
                 cols[1].selectbox("", currency_options, index=index, key=f"saved_{agent_id}_currency_{i}", label_visibility="collapsed")
+
                 cols[2].text_input("", key=f"saved_{agent_id}_cbm_{i}", label_visibility="collapsed")
                 cols[3].text_input("", key=f"saved_{agent_id}_ton_{i}", label_visibility="collapsed")
                 cols[4].text_input("", key=f"saved_{agent_id}_min_{i}", label_visibility="collapsed")
@@ -960,6 +961,9 @@ with main_tabs[1]:
             r3.text_input("", key=f"saved_{agent_id}_rebate_ton", label_visibility="collapsed")
             r4.text_input("", key=f"saved_{agent_id}_rebate_bl", label_visibility="collapsed")
             r5.text_input("", key=f"saved_{agent_id}_rebate_container", label_visibility="collapsed")
+
+
+
 
         # Render agent tabs
         agent_tabs = st.tabs([st.session_state.saved_agent_names[aid] for aid in st.session_state.saved_agent_ids])
