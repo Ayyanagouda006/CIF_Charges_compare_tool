@@ -622,7 +622,7 @@ with main_tabs[1]:
                 while f"{base}{count}" in existing:
                     count += 1
                 new_sheet = f"{base}{count}"
-                headers = ["Agent Name", "Description", "Currency", "Per CBM", "Per Ton", "Minimum", "Maximum", "Per BL", "Per Container"]
+                headers = ["Agent Name", "Description", "Currency", "Per CBM", "Per Ton", "Minimum", "Maximum", "Per BL", "Vat(%)", "Per Container"]
                 ws = wb.create_sheet(title=new_sheet)
                 for col_num, header in enumerate(headers, 1):
                     ws.cell(row=1, column=col_num, value=header)
@@ -696,7 +696,7 @@ with main_tabs[1]:
                                 "Per Ton": 0.0,
                                 "Minimum": 0.0,
                                 "Maximum": 0.0,
-                                "Per BL": 0.0
+                                "Per BL": 0.0,"Vat(%)":0.0
                             }
                             editable_df = pd.DataFrame([default_row])
 
@@ -722,6 +722,17 @@ with main_tabs[1]:
                             key=f"editor_{sheet}",
                             num_rows="dynamic"
                         )
+                        # Calculate totals
+                        sum_cols = ["Per CBM", "Per Ton", "Minimum", "Maximum", "Per BL"]
+                        numeric_sums = {col: agent_edited_df[col].fillna(0).sum() if col in agent_edited_df.columns else 0 for col in sum_cols}
+
+                        # Display totals in a row of columns"
+                        sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+                        sc1.metric("Total Per CBM", f"{numeric_sums['Per CBM']:.2f}")
+                        sc2.metric("Total Per Ton", f"{numeric_sums['Per Ton']:.2f}")
+                        sc3.metric("Total Minimum", f"{numeric_sums['Minimum']:.2f}")
+                        sc4.metric("Total Maximum", f"{numeric_sums['Maximum']:.2f}")
+                        sc5.metric("Total Per BL", f"{numeric_sums['Per BL']:.2f}")
 
                         remarks_text = remarks_row["Currency"].values[0] if not remarks_row.empty else ""
                         remarks_ = st.text_area("📒 Remarks", value=remarks_text or "", key=f"remarks_{sheet}")
@@ -755,7 +766,7 @@ with main_tabs[1]:
                             "Agent Name": agent_name_input,
                             "Description": "Remarks",
                             "Currency": remarks_,
-                            "Per CBM": "", "Per Ton": "", "Minimum": "", "Maximum": "", "Per BL": "", "Per Container": ""
+                            "Per CBM": "", "Per Ton": "", "Minimum": "", "Maximum": "", "Per BL": "", "Vat(%)":"", "Per Container": ""
                         }])
 
                         rebate_row_df = pd.DataFrame([{
@@ -766,6 +777,7 @@ with main_tabs[1]:
                             "Minimum": "",  # optional, adjust if needed
                             "Maximum": "",
                             "Per BL": rebate_bl,
+                            "Vat(%)":"",
                             "Per Container": rebate_pcont
                         }])
 
