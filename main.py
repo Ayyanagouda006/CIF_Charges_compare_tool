@@ -685,8 +685,8 @@ with main_tabs[1]:
                                 "Nomination BL": nomination_bl
                             }
 
-                        remarks_row = df[df["Description"] == "Remarks"]
-                        rebate_row = df[df["Description"] == "Rebate"]
+                        remarks_row = df[df["Description"] == "Remarks"].fillna("")
+                        rebate_row = df[df["Description"] == "Rebate"].fillna(0)
                         editable_df = df[~df["Description"].isin(["Remarks", "Rebate"])].reset_index(drop=True)
                         if editable_df.empty:
                             default_row = {
