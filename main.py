@@ -8,7 +8,7 @@ import os
 import re
 from io import BytesIO
 import zipfile
-
+import openpyxl
 
 # ----------------------------------------------------------------------
 # 0.  Page setup (MUST be first Streamlit call)
@@ -579,6 +579,13 @@ with main_tabs[0]:
 # ==============================================================================
 # TAB 2: SAVED COMPARISONS
 # ==============================================================================
+import streamlit as st
+import pandas as pd
+import os
+from io import BytesIO
+import zipfile
+import openpyxl
+
 with main_tabs[1]:
     st.title("📂 Saved Comparisons")
 
@@ -587,499 +594,378 @@ with main_tabs[1]:
     if not saved_files:
         st.info("No saved comparisons found. Return to the first tab, perform a calculation, and save it.")
     else:
-        # Dropdown + Download All in one row
         col1, col2 = st.columns([3, 1])
         with col1:
             selected_file = st.selectbox("Select a saved comparison to view:", saved_files)
 
         with col2:
-            # Prepare a zip file containing all saved Excel comparisons
             zip_buffer = BytesIO()
             with zipfile.ZipFile(zip_buffer, "w") as zipf:
                 for f in saved_files:
                     zipf.write(os.path.join(SAVED_DIR, f), arcname=f)
             zip_buffer.seek(0)
-
             st.download_button(
-                label="📦 Download All",
+                label="🛆 Download All",
                 data=zip_buffer,
                 file_name="All_Comparisons.zip",
                 mime="application/zip"
             )
 
-
         if selected_file:
             file_path = os.path.join(SAVED_DIR, selected_file)
 
-            # ------------------------------------------------------------------
-            # PREVIEW SELECTED WORKBOOK
-            # ------------------------------------------------------------------
-            with pd.ExcelFile(file_path) as xls:
-                sheet_names = xls.sheet_names
-                view_tabs = st.tabs(sheet_names)
-                for sheet, t in zip(sheet_names, view_tabs):
-                    with t:
-                        df_sheet = pd.read_excel(xls, sheet_name=sheet)
-                        st.dataframe(df_sheet)
+            if st.button("➕ Add New Agent Sheet"):
+                wb = openpyxl.load_workbook(file_path)
+                existing = wb.sheetnames
+                base = "NewAgent"
+                count = 1
+                while f"{base}{count}" in existing:
+                    count += 1
+                new_sheet = f"{base}{count}"
+                headers = ["Agent Name", "Description", "Currency", "Per CBM", "Per Ton", "Minimum", "Maximum", "Per BL", "Per Container"]
+                ws = wb.create_sheet(title=new_sheet)
+                for col_num, header in enumerate(headers, 1):
+                    ws.cell(row=1, column=col_num, value=header)
+                wb.save(file_path)
+                wb.close()
+                st.success(f"✅ '{new_sheet}' added.")
+                st.rerun()
 
-            # ------------------------------------------------------------------
-            # DOWNLOAD & DELETE ACTIONS
-            # ------------------------------------------------------------------
-            act_dl, act_del = st.columns(2)
-            with act_dl:
-                with open(file_path, "rb") as fp:
-                    st.download_button(
-                        label="📥 Download this comparison",
-                        data=fp.read(),
-                        file_name=selected_file,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    )
-            with act_del:
-                if "delete_mode" not in st.session_state:
-                    st.session_state.delete_mode = False
+            with open(file_path, "rb") as raw_file:
+                file_bytes = BytesIO(raw_file.read())
+            xl = pd.ExcelFile(file_bytes)
+            sheet_names = xl.sheet_names
 
-                if not st.session_state.delete_mode:
-                    if st.button("🗑️ Delete this comparison"):
-                        st.session_state.delete_mode = True
-                        st.rerun()
+            nom_sheet_name = "Nomination Support Details"
+            nom_df = xl.parse(nom_sheet_name) if nom_sheet_name in sheet_names else pd.DataFrame()
+
+            special_sheets = ["Info", "Comparison", "Nomination", nom_sheet_name]
+            agent_sheets = [s for s in sheet_names if s not in special_sheets]
+            tab_order = ["Info"] if "Info" in sheet_names else []
+            tab_order += agent_sheets
+            if nom_sheet_name in sheet_names:
+                tab_order.append(nom_sheet_name)
+            if "Comparison" in sheet_names:
+                tab_order.append("Comparison")
+            if "Nomination" in sheet_names:
+                tab_order.append("Nomination")
+
+            view_tabs = st.tabs(tab_order)
+            nom_dict = {}
+            agents_data = {}
+
+            for sheet, tab in zip(tab_order, view_tabs):
+                with tab:
+                    df = xl.parse(sheet)
+
+                    if sheet in agent_sheets:
+                        st.subheader(f"✏️ Edit Agent Sheet: {sheet}")
+
+                        agent_name_val = df["Agent Name"].iloc[0] if "Agent Name" in df.columns and not df.empty else ""
+                        agent_name_input = st.text_input("👤 Agent Name", value=agent_name_val, key=f"agent_name_{sheet}")
+
+                        nom_row = nom_df[nom_df["Agent Name"] == agent_name_val] if not nom_df.empty else pd.DataFrame()
+                        nom_rate = float(nom_row["Nomination Rate"].values[0]) if not nom_row.empty else 0.0
+                        nom_cbm = float(nom_row["Nomination CBM"].values[0]) if not nom_row.empty else 0.0
+                        nom_bl  = float(nom_row["Nomination BL"].values[0]) if not nom_row.empty else 0.0
+
+                        st.markdown("### 📄 Nomination Support (Auto-linked)")
+                        c1, c2, c3 = st.columns(3)
+                        with c1:
+                           nomination_rate = st.number_input("Nomination Rate", value=nom_rate, key=f"nom_rate_{sheet}")
+                        with c2:
+                            nomination_cbm = st.number_input("Nomination CBM", value=nom_cbm, key=f"nom_cbm_{sheet}")
+                        with c3:
+                            nomination_bl = st.number_input("Nomination BL", value=nom_bl, key=f"nom_bl_{sheet}")
+
+                        nom_dict[agent_name_input] = {
+                                "Agent Name": agent_name_input,
+                                "Nomination Rate": nomination_rate,
+                                "Nomination CBM": nomination_cbm,
+                                "Nomination BL": nomination_bl
+                            }
+
+                        remarks_row = df[df["Description"] == "Remarks"]
+                        rebate_row = df[df["Description"] == "Rebate"]
+                        editable_df = df[~df["Description"].isin(["Remarks", "Rebate"])].reset_index(drop=True)
+                        if editable_df.empty:
+                            default_row = {
+                                "Description": "",
+                                "Currency": currency_options[0],
+                                "Per CBM": 0.0,
+                                "Per Ton": 0.0,
+                                "Minimum": 0.0,
+                                "Maximum": 0.0,
+                                "Per BL": 0.0
+                            }
+                            editable_df = pd.DataFrame([default_row])
+
+                        columns_to_hide = ["Agent Name", "Per Container"]
+                        editable_df_display = editable_df.drop(columns=[c for c in columns_to_hide if c in editable_df.columns])
+
+                        st.markdown("### ✏️ Editable Charge Heads")
+
+                        editable_df_display = editable_df_display.fillna("")
+
+                        column_configs = {
+                            "Currency": st.column_config.SelectboxColumn(
+                                label="Currency",
+                                options=currency_options,
+                                required=True
+                            )
+                        }
+
+                        agent_edited_df = st.data_editor(
+                            editable_df_display,
+                            use_container_width=True,
+                            column_config=column_configs,
+                            key=f"editor_{sheet}",
+                            num_rows="dynamic"
+                        )
+
+                        remarks_text = remarks_row["Currency"].values[0] if not remarks_row.empty else ""
+                        remarks_ = st.text_area("📒 Remarks", value=remarks_text or "", key=f"remarks_{sheet}")
+
+                        rebate_currency = rebate_row["Currency"].values[0] if not rebate_row.empty else "USD"
+                        rebate_cbm = rebate_row["Per CBM"].values[0] if not rebate_row.empty else 0.0
+                        rebate_ton = rebate_row["Per Ton"].values[0] if not rebate_row.empty else 0.0
+                        rebate_bl = rebate_row["Per BL"].values[0] if not rebate_row.empty else 0.0
+                        rebate_container = rebate_row["Per Container"].values[0] if not rebate_row.empty else 0.0
+
+                        st.markdown("### 💰 Rebate Details")
+                        rc1, rc2, rc3, rc4, rc5 = st.columns(5)
+                        with rc1:
+                            st.selectbox(
+                                "Currency",
+                                options=currency_options,
+                                index=currency_options.index(rebate_currency) if rebate_currency in currency_options else 0,
+                                key=f"rebate_cur_{sheet}"
+                            )
+                        with rc2:
+                            rebate_cbm = st.number_input("Per CBM", value=float(rebate_cbm), key=f"rebate_cbm_{sheet}")
+                        with rc3:
+                            rebate_ton = st.number_input("Per Ton", value=float(rebate_ton), key=f"rebate_ton_{sheet}")
+                        with rc4:
+                            rebate_bl = st.number_input("Per BL", value=float(rebate_bl), key=f"rebate_bl_{sheet}")
+                        with rc5:
+                            rebate_pcont = st.number_input("Per Container", value=float(rebate_container), key=f"rebate_con_{sheet}")
+
+                        # Append remarks and rebate as new rows to the agent_edited_df
+                        remarks_row_df = pd.DataFrame([{
+                            "Agent Name": agent_name_input,
+                            "Description": "Remarks",
+                            "Currency": remarks_,
+                            "Per CBM": "", "Per Ton": "", "Minimum": "", "Maximum": "", "Per BL": "", "Per Container": ""
+                        }])
+
+                        rebate_row_df = pd.DataFrame([{
+                            "Description": "Rebate",
+                            "Currency": st.session_state.get(f"rebate_cur_{sheet}", "USD"),
+                            "Per CBM": rebate_cbm,
+                            "Per Ton": rebate_ton,
+                            "Minimum": "",  # optional, adjust if needed
+                            "Maximum": "",
+                            "Per BL": rebate_bl,
+                            "Per Container": rebate_pcont
+                        }])
+
+                        # Add the two special rows to the edited DataFrame
+                        agent_final_df = pd.concat([agent_edited_df, remarks_row_df, rebate_row_df], ignore_index=True)
+                        agent_final_df["Agent Name"] = agent_name_input
+                        # Store for later usage (e.g. for calculate, export, or save)
+                        agents_data[agent_name_input] = agent_final_df
+
+
+                    elif sheet == "Info":
+                        st.subheader("✏️ Edit Info Sheet")
+
+                        info_dict = df.set_index("Field").T.to_dict()
+
+                        def get_val(field, col):
+                            try:
+                                return str(info_dict[field][col])
+                            except:
+                                return "0"
+
+                        with st.expander("***📦 20' STD Information***", expanded=True):
+                            c1, c2, c3, c4, c5 = st.columns(5)
+                            box_rate_20    = c1.text_input("**Box Rate (USD)**", get_val("Box Rate (USD)", "20'STD"), key=f"box_rate_20_{sheet}")
+                            loadability_20 = c2.text_input("**Loadability (numeric)**", get_val("Loadability", "20'STD"), key=f"load_20_{sheet}")
+                            num_bl_20      = c3.text_input("**Number of BLs (numeric)**", get_val("Number of BLs", "20'STD"), key=f"num_bl_20_{sheet}")
+                            market_rate_20 = c4.text_input("**Market Rate (USD)**", get_val("Market Rate (USD)", "20'STD"), key=f"mkt_rate_20_{sheet}")
+
+                            try:
+                                box_20 = float(box_rate_20)
+                                load_20 = float(loadability_20)
+                                if load_20 > 0:
+                                    freight_cost_20 = box_20 / load_20
+                                    c5.metric("📉 Freight Cost Per CBM", f"${freight_cost_20:.2f}")
+                                else:
+                                    c5.write("Enter loadability > 0")
+                            except ValueError:
+                                c5.write("Waiting for valid numbers")
+
+                            st.markdown("**Transhipment**")
+                            t1, t2, t3, _, _ = st.columns(5)
+                            tran_cbm_20        = t1.text_input("**CBM (numeric)**", get_val("Transhipment CBM", "20'STD"), key=f"tran_cbm_20_{sheet}")
+                            tran_num_bl_20     = t2.text_input("**# of BLs (numeric)**", get_val("Transhipment Number of BLs", "20'STD"), key=f"tran_num_bl_20_{sheet}")
+                            tran_pro_per_cbm_20 = t3.text_input("**Profitability Per CBM**", get_val("Transhipment Profitability Per CBM", "20'STD"), key=f"tran_pro_per_cbm_20_{sheet}")
+
+                        with st.expander("***📦 40' STD Information***", expanded=True):
+                            c1, c2, c3, c4, c5 = st.columns(5)
+                            box_rate_40    = c1.text_input("**Box Rate (USD)**", get_val("Box Rate (USD)", "40'STD"), key=f"box_rate_40_{sheet}")
+                            loadability_40 = c2.text_input("**Loadability (numeric)**", get_val("Loadability", "40'STD"), key=f"load_40_{sheet}")
+                            num_bl_40      = c3.text_input("**Number of BLs (numeric)**", get_val("Number of BLs", "40'STD"), key=f"num_bl_40_{sheet}")
+                            market_rate_40 = c4.text_input("**Market Rate (USD)**", get_val("Market Rate (USD)", "40'STD"), key=f"mkt_rate_40_{sheet}")
+
+                            try:
+                                box_40 = float(box_rate_40)
+                                load_40 = float(loadability_40)
+                                if load_40 > 0:
+                                    freight_cost_40 = box_40 / load_40
+                                    c5.metric("📉 Freight Cost Per CBM", f"${freight_cost_40:.2f}")
+                                else:
+                                    c5.write("Enter loadability > 0")
+                            except ValueError:
+                                c5.write("Waiting for valid numbers")
+
+                            st.markdown("**Transhipment**")
+                            t1, t2, t3, _, _ = st.columns(5)
+                            tran_cbm_40        = t1.text_input("**CBM (numeric)**", get_val("Transhipment CBM", "40'STD"), key=f"tran_cbm_40_{sheet}")
+                            tran_num_bl_40     = t2.text_input("**# of BLs (numeric)**", get_val("Transhipment Number of BLs", "40'STD"), key=f"tran_num_bl_40_{sheet}")
+                            tran_pro_per_cbm_40 = t3.text_input("**Profitability Per CBM**", get_val("Transhipment Profitability Per CBM", "40'STD"), key=f"tran_pro_per_cbm_40_{sheet}")
+                    else:
+                        st.subheader(f"🔍 Preview: {sheet}")
+                        st.dataframe(df, use_container_width=True)
+
+            col_re, col_dl, col_del = st.columns([1, 1, 1])
+            if col_re.button("🧮 Re-Calculate"):
+                try:
+                    box_rate_20_f = float(box_rate_20)
+                    loadability_20_f = float(loadability_20)
+                    num_bl_20_f = float(num_bl_20)
+                    market_rate_20_f = float(market_rate_20)
+                    tran_cbm_20_f = float(tran_cbm_20)
+                    tran_num_bl_20_f = float(tran_num_bl_20)
+                    tran_pro_per_cbm_20_f = float(tran_pro_per_cbm_20)
+
+                    box_rate_40_f = float(box_rate_40)
+                    loadability_40_f = float(loadability_40)
+                    num_bl_40_f = float(num_bl_40)
+                    market_rate_40_f = float(market_rate_40)
+                    tran_cbm_40_f = float(tran_cbm_40)
+                    tran_num_bl_40_f = float(tran_num_bl_40)
+                    tran_pro_per_cbm_40_f = float(tran_pro_per_cbm_40)
+
+                except ValueError:
+                    st.error("Loadability, Box Rate, and Origin Charges must be numeric.")
+                    st.stop()
+
+                input_dict = {
+                        "20'STD": [
+                            loadability_20_f, box_rate_20_f, num_bl_20_f, market_rate_20_f,
+                            tran_cbm_20_f, tran_num_bl_20_f, tran_pro_per_cbm_20_f
+                        ],
+                        "40'STD": [
+                            loadability_40_f, box_rate_40_f, num_bl_40_f, market_rate_40_f,
+                            tran_cbm_40_f, tran_num_bl_40_f, tran_pro_per_cbm_40_f
+                        ]
+                }
+
+                # Convert nom_dict to DataFrame
+                nom_df = pd.DataFrame(nom_dict.values())
+
+                # Combine all agent sheets into one DataFrame
+                agent_dfs = []
+                for agent_name, df in agents_data.items():
+                    df = df.copy()
+                    df["Agent Name"] = agent_name  # Ensure Agent Name column is consistent
+                    agent_dfs.append(df)
+
+                if agent_dfs:
+                    in_df = pd.concat(agent_dfs, ignore_index=True)
                 else:
-                    st.warning("Are you sure you want to delete this file? This action cannot be undone.")
-                    c_yes, c_no = st.columns([1, 1])
-                    if c_yes.button("✅ Yes, delete"):
-                        try:
-                            os.remove(file_path)
-                            st.success(f"'{selected_file}' has been deleted.")
-                            st.session_state.delete_mode = False
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error deleting file: {e}")
-                    if c_no.button("❌ Cancel"):
-                        st.session_state.delete_mode = False
-                        st.rerun()
+                    in_df = pd.DataFrame()  # Empty fallback
 
-        locations_df = pd.read_excel(r"Data/locations.xlsx", sheet_name="POD locations")
-        pod_list = sorted(locations_df['POD'].dropna().unique())
-        # Create two columns for POL and POD dropdowns
+                # Run the comparison
+                comp_df, nomination_df = agent_compare(in_df, nom_df, input_dict, exchange_df)
 
-        # Load and restructure Info sheet
-        info_df = pd.read_excel(file_path, sheet_name="Info", index_col=0)
-        info_df.columns = info_df.columns.str.strip()  # Ensure no accidental spaces
-
-        # Safely extract POL and POD for 20'STD
-        saved_pol = info_df.at["POL", "20'STD"] if "POL" in info_df.index else "Nhava Sheva"
-        saved_pod = info_df.at["POD", "20'STD"] if "POD" in info_df.index else pod_list[0]
-        col1, col2 = st.columns(2)
-
-        with col1:
-            pol = st.selectbox("**Port of Loading (POL)**", ["Nhava Sheva"], index=0, key="saved_pol")
-
-        with col2:
-            pod_index = pod_list.index(saved_pod) if saved_pod in pod_list else 0
-            pod = st.selectbox("**Port of Discharge (POD)**", pod_list, index=pod_index, key="saved_pod")
-
-        # ------------------------------------------------------------------
-        # 2.  Container‑level inputs
-        # ------------------------------------------------------------------
-        saved_box_rate_20 = info_df.at["Box Rate (USD)", "20'STD"] if "Box Rate (USD)" in info_df.index else "0"
-        saved_load_20 = info_df.at["Loadability", "20'STD"] if "Loadability" in info_df.index else "0"
-        saved_num_bl_20 = info_df.at["Number of BLs", "20'STD"] if "Number of BLs" in info_df.index else "0"
-        saved_mkt_rate_20 = info_df.at["Market Rate (USD)", "20'STD"] if "Market Rate (USD)" in info_df.index else "0"
-        saved_tran_cbm_20 = info_df.at["Transhipment CBM", "20'STD"] if "Transhipment CBM" in info_df.index else "0"
-        saved_tran_num_bl_20 = info_df.at["Transhipment Number of BLs","20'STD"] if "Transhipment Number of BLs" in info_df.index else "0"
-        saved_tran_pro_per_cbm_20 = info_df.at["Transhipment Profitability Per CBM","20'STD"] if "Transhipment Profitability Per CBM" in info_df.index else "0"
-
-        with st.expander("***📦 20' STD Information***", expanded=True):
-            c1, c2, c3, c4, c5 = st.columns(5)
-            box_rate_20    = c1.text_input("**Box Rate (USD)**", value=saved_box_rate_20, key="saved_box_rate_20")
-            loadability_20 = c2.text_input("**Loadability (numeric)**", value=saved_load_20, key="saved_load_20")
-            num_bl_20      = c3.text_input("**Number of BLs (numeric)**", value=saved_num_bl_20, key="saved_num_bl_20")
-            market_rate_20 = c4.text_input("**Market Rate (USD)**", value=saved_mkt_rate_20, key="saved_mkt_rate_20")
-            
-            # Freight cost display (in new column next to box rate & loadability)
-            try:
-                box_20 = float(box_rate_20)
-                load_20 = float(loadability_20)
-                if load_20 > 0:
-                    freight_cost_20 = box_20 / load_20
-                    c5.metric("📉 Freight Cost Per CBM", f"${freight_cost_20:.2f}")
-                else:
-                    c5.write("Enter loadability > 0")
-            except ValueError:
-                c5.write("Waiting for valid numbers")
-
-            # Transhipment
-            st.markdown("**Transhipment**")
-            t1, t2, t3, t4, t5 = st.columns(5)
-            tran_cbm_20    = t1.text_input("**CBM (numeric)**", value=saved_tran_cbm_20, key="saved_tran_cbm_20")
-            tran_num_bl_20 = t2.text_input("**# of BLs (numeric)**", value=saved_tran_num_bl_20, key="saved_tran_num_bl_20")
-            tran_pro_per_cbm_20 = t3.text_input("**Profitability Per CBM**", value=saved_tran_pro_per_cbm_20, key="saved_tran_pro_per_cbm_20")
-
-
-        saved_box_rate_40 = info_df.at["Box Rate (USD)", "40'STD"] if "Box Rate (USD)" in info_df.index else "0"
-        saved_load_40 = info_df.at["Loadability", "40'STD"] if "Loadability" in info_df.index else "0"
-        saved_num_bl_40 = info_df.at["Number of BLs", "40'STD"] if "Number of BLs" in info_df.index else "0"
-        saved_mkt_rate_40 = info_df.at["Market Rate (USD)", "40'STD"] if "Market Rate (USD)" in info_df.index else "0"
-        saved_tran_cbm_40 = info_df.at["Transhipment CBM", "40'STD"] if "Transhipment CBM" in info_df.index else "0"
-        saved_tran_num_bl_40 = info_df.at["Transhipment Number of BLs","40'STD"] if "Transhipment Number of BLs" in info_df.index else "0"
-        saved_tran_pro_per_cbm_40 = info_df.at["Transhipment Profitability Per CBM","40'STD"] if "Transhipment Profitability Per CBM" in info_df.index else "0"
-
-        with st.expander("***📦 40' STD Information***", expanded=True):
-            c1, c2, c3, c4, c5 = st.columns(5)
-            box_rate_40    = c1.text_input("**Box Rate (USD)**", value=saved_box_rate_40, key="saved_box_rate_40")
-            loadability_40 = c2.text_input("**Loadability (numeric)**", value=saved_load_40, key="saved_load_40")
-            num_bl_40      = c3.text_input("**Number of BLs (numeric)**", value=saved_num_bl_40, key="saved_num_bl_40")
-            market_rate_40 = c4.text_input("**Market Rate (USD)**", value=saved_mkt_rate_40, key="saved_mkt_rate_40")
-            
-            # Freight cost display (in new column next to box rate & loadability)
-            try:
-                box_40 = float(box_rate_40)
-                load_40 = float(loadability_40)
-                if load_40 > 0:
-                    freight_cost_40 = box_40 / load_40
-                    c5.metric("📉 Freight Cost Per CBM", f"${freight_cost_40:.2f}")
-                else:
-                    c5.write("Enter loadability > 0")
-            except ValueError:
-                c5.write("Waiting for valid numbers")
-
-            # Transhipment
-            st.markdown("**Transhipment**")
-            t1, t2, t3, t4, t5 = st.columns(5)
-            tran_cbm_40    = t1.text_input("**CBM (numeric)**", value=saved_tran_cbm_40, key="saved_tran_cbm_40")
-            tran_num_bl_40 = t2.text_input("**# of BLs (numeric)**", value=saved_tran_num_bl_40, key="saved_tran_num_bl_40")
-            tran_pro_per_cbm_40 = t3.text_input("**Profitability Per CBM**", value=saved_tran_pro_per_cbm_40, key="saved_tran_pro_per_cbm_40")
-
-        # ------------------------------------------------------------------
-        # Add Agent + Agent Tabs (with existing loaded agents)
-        # ------------------------------------------------------------------
-
-        # Track selected file to reload saved agents
-        if "saved_last_loaded_file" not in st.session_state:
-            st.session_state.saved_last_loaded_file = None
-
-        # Ensure dict is always initialized (fix for rerun crash)
-        if "saved_agent_sheets" not in st.session_state:
-            st.session_state.saved_agent_sheets = {}
-
-        # Reload saved agents only if file is new
-        if selected_file != st.session_state.saved_last_loaded_file:
-            st.session_state.saved_last_loaded_file = selected_file
-
-            # Load all sheets into memory
-            all_sheets_dict = pd.read_excel(file_path, sheet_name=None)
-
-            # Exclude only non-agent relevant sheets
-            excluded = {"Info", "Comparison", "Nomination"}
-            agent_sheet_names = [s for s in all_sheets_dict if s not in excluded and s != "Nomination Support Details"]
-
-            # Store agent-related data
-            st.session_state.saved_agent_ids = list(range(1, len(agent_sheet_names) + 1))
-            st.session_state.saved_agent_names = {i + 1: name for i, name in enumerate(agent_sheet_names)}
-            st.session_state.saved_agent_sheets = {
-                name: all_sheets_dict[name] for name in agent_sheet_names
-            }
-
-            # ✅ Store Nomination Support Details separately
-            st.session_state["saved_nomination_support"] = all_sheets_dict.get("Nomination Support Details", pd.DataFrame())
-
-
-
-        # Fallback if not already initialized
-        if "saved_agent_ids" not in st.session_state:
-            st.session_state.saved_agent_ids = [1]
-            st.session_state.saved_agent_names = {1: "Saved Agent 1"}
-            st.session_state.saved_agent_sheets = {}
-
-        # Add Agent Button
-        if st.button("➕ Add Agent", key="saved_add_agent_btn"):
-            new_id = max(st.session_state.saved_agent_ids) + 1
-            st.session_state.saved_agent_ids.append(new_id)
-            st.session_state.saved_agent_names[new_id] = f"Agent {new_id}"
-
-# Delete agent helper
-        def delete_saved_agent(agent_id):
-            st.session_state.saved_agent_ids.remove(agent_id)
-            st.session_state.saved_agent_names.pop(agent_id, None)
-
-        def extract_saved_agent_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-            rows = []
-            nom_rows = []
-
-            for agent_id in st.session_state.saved_agent_ids:
-                agent_name = st.session_state.get(f"saved_agent_name_{agent_id}", f"Saved Agent {agent_id}")
-                nomination_rate = st.session_state.get(f"saved_nom_support_rate_{agent_id}", 0)
-                nomination_cbm = st.session_state.get(f"saved_nom_support_cbm_{agent_id}", 0)
-                nomination_bl = st.session_state.get(f"saved_nom_support_bl_{agent_id}", 0)
-
-                nom_rows.append({
-                    "Agent Name": agent_name,
-                    "Nomination Rate": nomination_rate,
-                    "Nomination CBM": nomination_cbm,
-                    "Nomination BL": nomination_bl
-                })
-
-                num_rows = st.session_state.get(f"saved_{agent_id}_num_charge_rows", 8)
-                for i in range(1, num_rows + 1):
-                    desc = st.session_state.get(f"saved_{agent_id}_desc_{i}", "")
-                    if desc.strip() == "":
-                        continue  # skip empty rows
-
-                    rows.append({
-                        "Agent Name": agent_name,
-                        "Description": desc,
-                        "Currency":    st.session_state.get(f"saved_{agent_id}_currency_{i}", ""),
-                        "Per CBM":     st.session_state.get(f"saved_{agent_id}_cbm_{i}", ""),
-                        "Per Ton":     st.session_state.get(f"saved_{agent_id}_ton_{i}", ""),
-                        "Minimum":     st.session_state.get(f"saved_{agent_id}_min_{i}", ""),
-                        "Maximum":     st.session_state.get(f"saved_{agent_id}_max_{i}", ""),
-                        "Per BL":      st.session_state.get(f"saved_{agent_id}_bl_{i}", ""),
-                        "Vat(%)":      st.session_state.get(f"saved_{agent_id}_vat_{i}", ""),
-                        "Per Container": ""
-                    })
-
-                # Remarks row
-                rows.append({
-                    "Agent Name": agent_name,
-                    "Description": "Remarks",
-                    "Currency": st.session_state.get(f"saved_{agent_id}_desc_notes", ""),
-                    "Per CBM": "", "Per Ton": "", "Minimum": "", "Maximum": "", "Per BL": "", "Vat(%)": "", "Per Container": ""
-                })
-
-                # Rebate row
-                rows.append({
-                    "Agent Name": agent_name,
-                    "Description": "Rebate",
-                    "Currency": st.session_state.get(f"saved_{agent_id}_rebate_currency", ""),
-                    "Per CBM":   st.session_state.get(f"saved_{agent_id}_rebate_cbm", ""),
-                    "Per Ton":   st.session_state.get(f"saved_{agent_id}_rebate_ton", ""),
-                    "Minimum": "", "Maximum": "",
-                    "Per BL":    st.session_state.get(f"saved_{agent_id}_rebate_bl", ""),
-                    "Vat(%)": "",
-                    "Per Container": st.session_state.get(f"saved_{agent_id}_rebate_container", "")
-                })
-
-            df = pd.DataFrame(rows)
-            agent_df = df[df["Description"].fillna("").str.strip() != ""]  # Clean blank rows
-            nomination_df = pd.DataFrame(nom_rows)
-
-            return agent_df, nomination_df
-
-
-        def saved_agent_form(agent_id: int, agent_df: pd.DataFrame, nom_df: pd.DataFrame):
-            if agent_df.empty:
-                charge_rows = pd.DataFrame(columns=["Description", "Currency", "Per CBM", "Per Ton", "Minimum", "Maximum", "Per BL", "VAT"])
-                remarks_row = pd.DataFrame(columns=charge_rows.columns)
-                rebate_row = pd.DataFrame(columns=charge_rows.columns)
-                nomination_rate, nomination_cbm, nomination_bl = 0.0, 0.0, 0
-            else:
-                agent_df = agent_df.fillna("")
-                charge_rows = agent_df[~agent_df["Description"].isin(["Remarks", "Rebate"])]
-                remarks_row = agent_df[agent_df["Description"] == "Remarks"]
-                rebate_row = agent_df[agent_df["Description"] == "Rebate"]
-                nomination_rate = nom_df['Nomination Rate'].values[0] if not nom_df.empty else 0.0
-                nomination_cbm = nom_df['Nomination CBM'].values[0] if not nom_df.empty else 0.0
-                nomination_bl = nom_df['Nomination BL'].values[0] if not nom_df.empty else 0
-
-            row_count = len(charge_rows) if not charge_rows.empty else 1
-            row_key = f"saved_{agent_id}_num_charge_rows"
-
-            if row_key not in st.session_state:
-                st.session_state[row_key] = row_count
-
-
-            for i, (_, row_data) in enumerate(charge_rows.iterrows(), start=1):
-                for field, default in zip(["desc", "currency", "cbm", "ton", "min", "max", "bl", "vat"],
-                                        ["Description", "Currency", "Per CBM", "Per Ton", "Minimum", "Maximum", "Per BL", "VAT"]):
-                    key = f"saved_{agent_id}_{field}_{i}"
-                    st.session_state[key] = str(row_data.get(default, ""))
-
-            if not remarks_row.empty:
-                st.session_state[f"saved_{agent_id}_desc_notes"] = str(remarks_row.iloc[0].get("Currency", ""))
-
-            if not rebate_row.empty:
-                r = rebate_row.iloc[0]
-                for field, col in zip(["currency", "cbm", "ton", "bl", "container"],
-                                    ["Currency", "Per CBM", "Per Ton", "Per BL", "Per Container"]):
-                    key = f"saved_{agent_id}_rebate_{field}"
-                    st.session_state[key] = str(r.get(col, ""))
-
-            for field, val in zip(["rate", "cbm", "bl"], [nomination_rate, nomination_cbm, nomination_bl]):
-                key = f"saved_nom_support_{field}_{agent_id}"
-                st.session_state[key] = val
-
-            c1, c2 = st.columns([5, 1])
-            with c1:
-                st.text_input("***Agent Name***", key=f"saved_agent_name_{agent_id}",
-                            value=st.session_state.saved_agent_names.get(agent_id, f"Saved Agent {agent_id}"))
-            with c2:
-                if st.button("❌", key=f"saved_del_agent_btn_{agent_id}"):
-                    delete_saved_agent(agent_id)
-                    st.rerun()
-
-            n1, n2, n3 = st.columns(3)
-            n1.number_input("**Nomination Rate (USD)**", min_value=0.0, step=0.1, key=f"saved_nom_support_rate_{agent_id}")
-            n2.number_input("**Nomination CBM**", min_value=0.0, step=0.1, key=f"saved_nom_support_cbm_{agent_id}")
-            n3.number_input("**Nomination BL**", min_value=0, step=1, key=f"saved_nom_support_bl_{agent_id}")
-
-            st.markdown("***Destination Charges (CIF)***")
-            head_cols = st.columns([3, 1, 1, 1, 1, 1, 1, 1])
-            headers = ["Charge Head", "Currency", "Per CBM", "Per Ton", "Minimum", "Maximum", "Per BL", "Vat(%)"]
-            for col, h in zip(head_cols, headers):
-                col.markdown(f"**{h}**")
-
-            for i in range(1, st.session_state[row_key] + 1):
-                cols = st.columns([3, 1, 1, 1, 1, 1, 1, 1])
-                cols[0].text_input("", key=f"saved_{agent_id}_desc_{i}", label_visibility="collapsed")
-
-                currency = st.session_state.get(f"saved_{agent_id}_currency_{i}", "USD")
-                index = currency_options.index(currency) if currency in currency_options else 0
-                cols[1].selectbox("", currency_options, index=index, key=f"saved_{agent_id}_currency_{i}", label_visibility="collapsed")
-
-                cols[2].text_input("", key=f"saved_{agent_id}_cbm_{i}", label_visibility="collapsed")
-                cols[3].text_input("", key=f"saved_{agent_id}_ton_{i}", label_visibility="collapsed")
-                cols[4].text_input("", key=f"saved_{agent_id}_min_{i}", label_visibility="collapsed")
-                cols[5].text_input("", key=f"saved_{agent_id}_max_{i}", label_visibility="collapsed")
-                cols[6].text_input("", key=f"saved_{agent_id}_bl_{i}", label_visibility="collapsed")
-                cols[7].text_input("", key=f"saved_{agent_id}_vat_{i}", label_visibility="collapsed")
-
-            if st.button("➕ Add Charge Head", key=f"saved_add_charge_head_btn_{agent_id}"):
-                st.session_state[row_key] += 1
-
-            st.text_input("Charge Head Notes", key=f"saved_{agent_id}_desc_notes", placeholder="If Cartons...")
-
-            st.markdown("***Rebates***")
-            rebate_cols = st.columns(5)
-            rebate_headers = ["Currency", "Per CBM", "Per Ton", "Per BL", "Per Container"]
-            for col, h in zip(rebate_cols, rebate_headers):
-                col.markdown(f"**{h}**")
-
-            r1, r2, r3, r4, r5 = st.columns(5)
-            currency = st.session_state.get(f"saved_{agent_id}_rebate_currency", "USD")
-            index = currency_options.index(currency) if currency in currency_options else 0
-            r1.selectbox("", currency_options, index=index, key=f"saved_{agent_id}_rebate_currency", label_visibility="collapsed")
-            r2.text_input("", key=f"saved_{agent_id}_rebate_cbm", label_visibility="collapsed")
-            r3.text_input("", key=f"saved_{agent_id}_rebate_ton", label_visibility="collapsed")
-            r4.text_input("", key=f"saved_{agent_id}_rebate_bl", label_visibility="collapsed")
-            r5.text_input("", key=f"saved_{agent_id}_rebate_container", label_visibility="collapsed")
-
-
-
-
-        # Render agent tabs
-        agent_tabs = st.tabs([st.session_state.saved_agent_names[aid] for aid in st.session_state.saved_agent_ids])
-        for tab, aid in zip(agent_tabs, st.session_state.saved_agent_ids):
-            agent_name = st.session_state.saved_agent_names[aid]
-            agent_df = st.session_state.saved_agent_sheets.get(agent_name, pd.DataFrame())
-            nom_df = st.session_state.get("saved_nomination_support", pd.DataFrame())
-            nom_df = nom_df[nom_df['Agent Name'] == agent_name]
-
-            with tab:
-                saved_agent_form(aid, agent_df, nom_df)
-
-        st.markdown("""
-        <div style="color: red; font-weight: bold;">
-        ⚠️ Please note: <u>VAT(%) is not included</u> in any of the comparison or calculation logic.
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("### 🛠️ Actions")
-        calc_btn, dl_placeholder, save_placeholder = st.columns([1, 1, 1])
-
-        if st.button("🧮 Recalculate"):
-
-            try:
-                box_rate_20_f = float(box_rate_20)
-                loadability_20_f = float(loadability_20)
-                num_bl_20_f = float(num_bl_20)
-                market_rate_20_f = float(market_rate_20)
-                tran_cbm_20_f = float(tran_cbm_20)
-                tran_num_bl_20_f = float(tran_num_bl_20)
-                tran_pro_per_cbm_20_f = float(tran_pro_per_cbm_20)
-
-                box_rate_40_f = float(box_rate_40)
-                loadability_40_f = float(loadability_40)
-                num_bl_40_f = float(num_bl_40)
-                market_rate_40_f = float(market_rate_40)
-                tran_cbm_40_f = float(tran_cbm_40)
-                tran_num_bl_40_f = float(tran_num_bl_40)
-                tran_pro_per_cbm_40_f = float(tran_pro_per_cbm_40)
-
-            except ValueError:
-                st.error("Loadability, Box Rate, and Origin Charges must be numeric.")
-                st.stop()
-
-            saved_input_df, saved_nom_df = extract_saved_agent_data()
-
-            input_dict = {
-                "20'STD": [
-                    float(st.session_state.get("saved_load_20", 0)),
-                    float(st.session_state.get("saved_box_rate_20", 0)),
-                    float(st.session_state.get("saved_num_bl_20", 0)),
-                    float(st.session_state.get("saved_market_rate_20", 0)),
-                    float(st.session_state.get("saved_tran_cbm_20", 0)),
-                    float(st.session_state.get("saved_tran_bl_20", 0)),
-                    float(st.session_state.get("saved_tran_profit_cbm_20", 0)),
-                ],
-                "40'STD": [
-                    float(st.session_state.get("saved_load_40", 0)),
-                    float(st.session_state.get("saved_box_rate_40", 0)),
-                    float(st.session_state.get("saved_num_bl_40", 0)),
-                    float(st.session_state.get("saved_market_rate_40", 0)),
-                    float(st.session_state.get("saved_tran_cbm_40", 0)),
-                    float(st.session_state.get("saved_tran_bl_40", 0)),
-                    float(st.session_state.get("saved_tran_profit_cbm_40", 0)),
-                ],
-            }
-
-            result_df, nomination_df = agent_compare(saved_input_df, saved_nom_df, input_dict, exchange_df)
-
-            st.session_state["saved_container_info"] = pd.DataFrame({
+                # Save to session
+                st.session_state["container_info"] = pd.DataFrame({
                     "Field": [
-                        "POL","POD","Loadability", "Box Rate (USD)", "Number of BLs", "Market Rate (USD)",
+                        "POL", "POD", "Loadability", "Box Rate (USD)", "Number of BLs", "Market Rate (USD)",
                         "Transhipment CBM", "Transhipment Number of BLs", "Transhipment Profitability Per CBM"
                     ],
                     "20'STD": [
-                        pol,pod,loadability_20_f, box_rate_20_f, num_bl_20_f, market_rate_20_f,
+                        pol, pod, loadability_20_f, box_rate_20_f, num_bl_20_f, market_rate_20_f,
                         tran_cbm_20_f, tran_num_bl_20_f, tran_pro_per_cbm_20_f
                     ],
                     "40'STD": [
-                        pol,pod,loadability_40_f, box_rate_40_f, num_bl_40_f, market_rate_40_f,
+                        pol, pod, loadability_40_f, box_rate_40_f, num_bl_40_f, market_rate_40_f,
                         tran_cbm_40_f, tran_num_bl_40_f, tran_pro_per_cbm_40_f
                     ]
                 })
 
-            st.session_state["saved_result_df"] = result_df
-            st.session_state["saved_nomination_df"] = nomination_df
-            st.session_state["saved_last_input_df"] = saved_input_df
-            st.session_state["saved_last_nom_df"] = saved_nom_df
+                st.session_state["last_input_df"] = in_df
+                st.session_state["last_nom_df"] = nom_df
+                st.session_state["last_result_df"] = comp_df
+                st.session_state["last_nomination_df"] = nomination_df
 
-            st.success("Recalculation complete.")
-            st.dataframe(result_df)
-            st.dataframe(saved_nom_df)
-            st.dataframe(nomination_df)
+                st.success("✅ Recalculation complete.")
+                st.dataframe(comp_df)
+                st.dataframe(nom_df)
+                st.dataframe(nomination_df)
 
-        if all(k in st.session_state for k in ("saved_container_info", "saved_last_input_df", "saved_result_df","saved_nomination_df")):
-            if st.button("💾 Save Changes"):
-                if not file_path:
-                    st.error("Original file path not found.")
+                # Overwrite the selected Excel file with all updated sheets
+                with pd.ExcelWriter(file_path, engine="xlsxwriter") as writer:
+                    # Save container info
+                    st.session_state["container_info"].to_excel(writer, sheet_name="Info", index=False)
+
+                    # Save each agent sheet separately
+                    for agent_name, df in agents_data.items():
+                        safe_name = re.sub(r"[\[\]\*:/\\?]", "", agent_name)[:31] or "Sheet"
+                        df.to_excel(writer, sheet_name=safe_name, index=False)
+
+                    # Save updated Nomination Support Details
+                    nom_df.to_excel(writer, sheet_name="Nomination Support Details", index=False)
+
+                    # Save calculated results
+                    st.session_state["last_result_df"].to_excel(writer, sheet_name="Comparison", index=False)
+                    st.session_state["last_nomination_df"].to_excel(writer, sheet_name="Nomination", index=False)
+
+                st.success(f"💾 Changes saved to '{selected_file}' successfully.")
+
+
+
+            with col_dl:
+                with open(file_path, "rb") as fp:
+                    st.download_button(
+                        label="📅 Download this comparison",
+                        data=fp.read(),
+                        file_name=selected_file,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+            with col_del:
+                if "delete_mode" not in st.session_state:
+                    st.session_state.delete_mode = False
+                if not st.session_state.delete_mode:
+                    if st.button("🚨 Delete this comparison"):
+                        st.session_state.delete_mode = True
+                        st.rerun()
                 else:
-                    with pd.ExcelWriter(file_path, engine="xlsxwriter") as writer:
-                        # You can regenerate or store container_info separately
-                        st.session_state["saved_container_info"].to_excel(writer, sheet_name="Info", index=False)
-
-                        for agent, grp in st.session_state["saved_last_input_df"].groupby("Agent Name", sort=False):
-                            grp.to_excel(writer, sheet_name=to_safe_sheet(agent), index=False)
-
-                        st.session_state["saved_last_nom_df"].to_excel(writer, sheet_name="Nomination Support Details", index=False)
-                        st.session_state["saved_result_df"].to_excel(writer, sheet_name="Comparison", index=False)
-                        st.session_state["saved_nomination_df"].to_excel(writer, sheet_name="Nomination", index=False)
-
-                    st.success("Saved changes to the original file.")
-                    st.rerun()
-
-        else:
-            with dl_placeholder:
-                st.caption("Run **Calculate** first to enable download and save options.")
+                    st.warning("Are you sure you want to delete this file? This action cannot be undone.")
+                    c1, c2 = st.columns(2)
+                    if c1.button("✅ Yes, delete"):
+                        try:
+                            os.remove(file_path)
+                            st.success("Deleted successfully.")
+                            st.session_state.delete_mode = False
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error deleting file: {e}")
+                    if c2.button("❌ Cancel"):
+                        st.session_state.delete_mode = False
+                        st.rerun()
 
 
 
