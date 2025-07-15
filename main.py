@@ -722,9 +722,15 @@ with main_tabs[1]:
                             key=f"editor_{sheet}",
                             num_rows="dynamic"
                         )
-                        # Calculate totals
+                        # Calculate totals safely by converting to numeric
                         sum_cols = ["Per CBM", "Per Ton", "Minimum", "Maximum", "Per BL"]
-                        numeric_sums = {col: agent_edited_df[col].fillna(0).sum() if col in agent_edited_df.columns else 0 for col in sum_cols}
+                        numeric_sums = {}
+
+                        for col in sum_cols:
+                            if col in agent_edited_df.columns:
+                                numeric_sums[col] = pd.to_numeric(agent_edited_df[col], errors='coerce').fillna(0).sum()
+                            else:
+                                numeric_sums[col] = 0
 
                         # Display totals in a row of columns"
                         sc1, sc2, sc3, sc4, sc5 = st.columns(5)
