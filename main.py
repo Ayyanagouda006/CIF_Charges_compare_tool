@@ -701,7 +701,23 @@ with main_tabs[1]:
                             editable_df = pd.DataFrame([default_row])
 
                         columns_to_hide = ["Agent Name", "Per Container"]
+                        if "Vat(%)" not in editable_df.columns:
+                            editable_df["Vat(%)"] = 0.0
+                        # Columns to treat as numeric
+                        numeric_cols = ["Per CBM", "Per Ton", "Minimum", "Maximum", "Per Container", "Vat(%)", "Per BL"]
+
+                        # Fill NaNs in these columns with 0.0 (or another default)
+                        for col in numeric_cols:
+                            if col in editable_df.columns:
+                                # Use 0.0 for float columns, 0 for Per BL (int)
+                                if col == "Per BL":
+                                    editable_df[col] = pd.to_numeric(editable_df[col], errors="coerce").fillna(0).astype(int)
+                                else:
+                                    editable_df[col] = pd.to_numeric(editable_df[col], errors="coerce").fillna(0.0)
+
+                        # Drop hidden columns
                         editable_df_display = editable_df.drop(columns=[c for c in columns_to_hide if c in editable_df.columns])
+
 
                         st.markdown("### ✏️ Editable Charge Heads")
 
@@ -712,8 +728,44 @@ with main_tabs[1]:
                                 label="Currency",
                                 options=currency_options,
                                 required=True
+                            ),
+                            "Per CBM": st.column_config.NumberColumn(
+                                label="Per CBM",
+                                step=0.01,
+                                format="%.2f"
+                            ),
+                            "Per Ton": st.column_config.NumberColumn(
+                                label="Per Ton",
+                                step=0.01,
+                                format="%.2f"
+                            ),
+                            "Minimum": st.column_config.NumberColumn(
+                                label="Minimum",
+                                step=0.01,
+                                format="%.2f"
+                            ),
+                            "Maximum": st.column_config.NumberColumn(
+                                label="Maximum",
+                                step=0.01,
+                                format="%.2f"
+                            ),
+                            "Per Container": st.column_config.NumberColumn(
+                                label="Per Container",
+                                step=0.01,
+                                format="%.2f"
+                            ),
+                            "VAT": st.column_config.NumberColumn(
+                                label="VAT (%)",
+                                step=0.01,
+                                format="%.2f"
+                            ),
+                            "Per BL": st.column_config.NumberColumn(
+                                label="Per BL",
+                                step=1,
+                                format="%d"
                             )
                         }
+
 
                         agent_edited_df = st.data_editor(
                             editable_df_display,
